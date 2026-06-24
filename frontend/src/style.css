@@ -1,0 +1,57 @@
+/* ---- Retro device widget: global styles ---------------------------------- */
+
+:root {
+  --accent: #e0712f;       /* orange */
+  --accent-dim: #b1561f;
+  --lcd-bg: #0a0a0a;
+  --lcd-glow: #15130f;
+  --lcd-text: #ece9df;
+  --lcd-dim: #6f6b60;
+  --body-hi: #c3c0b8;
+  --body-lo: #8d8a82;
+  --body-edge: #6f6c64;
+  --btn-face-hi: #e6e4dc;
+  --btn-face-lo: #c7c4bb;
+  --seam: rgba(0, 0, 0, 0.28);
+  --device-radius: 22px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100vh;
+  background: transparent;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Ubuntu", "Roboto",
+    "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: var(--lcd-text);
+  user-select: none;
+  cursor: default;
+}
+
+#app {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* LCD typography: condensed, tabular figures for that meter look. */
+.lcd-mono {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  letter-spacing: 0.04em;
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
