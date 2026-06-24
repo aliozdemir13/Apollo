@@ -8,6 +8,8 @@ windows and cycles through several **views** using its physical-looking buttons:
 | **Clock** | Time + date (with a mini weather line) | local clock |
 | **Weather** | Condition, temperature, feels-like, humidity, wind | [Open-Meteo](https://open-meteo.com) (no API key) |
 | **System** | CPU %, RAM, battery, uptime — **✓ toggles a top-5 apps list** | local (`/proc`, `top`, `ps`, IOKit) |
+| **GitHub** | Open PRs, PRs awaiting your review, latest CI runs, and per-repo errors (✓ cycles) | GitHub REST API (personal access token) |
+| **Teams** | Unread chat messages (optionally filtered to "favorites") | Microsoft Graph (OAuth) **or** local macOS notifications (no keys) |
 | **2FA** | Rotating TOTP codes for one or more Salesforce orgs, PIN-locked | local (RFC 6238); secrets in OS keychain |
 
 Built with **[Wails v2](https://wails.io)** — a Go backend compiled together with
@@ -27,16 +29,21 @@ The widget is driven entirely by the on-device buttons (or the keyboard):
 | Open settings | hover top-left ⚙ | <kbd>S</kbd> |
 | Quit | hover top-left ⏻ | — |
 
+Drag the gray body to move the window. On the GitHub view, click a PR to open it
+in your browser.
+
 The **horizontal ‹ ›** buttons switch between a view's sub-screens (they're dimmed
 on views that have none):
 
 - **System** — stats gauges ↔ **top-5 apps**.
+- **GitHub** — **Open PRs → To review → Workflows → Errors**.
 
 The orange button **refreshes** the current screen on every view **except 2FA**,
 where it is a **padlock** that locks the screen:
 
 - **2FA** — tap a tile to copy its code; the orange padlock locks the screen
   (codes aren't fetched at all while locked). On the lock screen, type your PIN.
+- **Teams** — when signed out, the orange button starts sign-in instead of refreshing.
 
 > New views released in an update surface automatically the first time you launch
 > the new build; you can then disable any you don't want in Settings → Views.
@@ -76,8 +83,8 @@ wails build
 
 Output:
 
-- **macOS** → `build/bin/Apollo-Widget.app`
-- **Linux** → `build/bin/Apollo-Widget` (a single binary)
+- **macOS** → `build/bin/retro-widget.app`
+- **Linux** → `build/bin/retro-widget` (a single binary)
 
 > Cross-compiling between macOS and Linux is **not** supported because each links
 > against the native system webview (WebKit / WebKitGTK). Build **on** the target
@@ -139,19 +146,19 @@ wails build -tags webkit2_41
 wails build
 ```
 
-Output: a single binary at **`build/bin/Apollo-Widget`**. Run it with `./build/bin/Apollo-Widget`.
+Output: a single binary at **`build/bin/retro-widget`**. Run it with `./build/bin/retro-widget`.
 
 > `wails dev -tags webkit2_41` works the same way for live-reload development.
 
 ### 5. Run on login (optional)
 
-Create `~/.config/autostart/Apollo-Widget.desktop` (adjust the path):
+Create `~/.config/autostart/retro-widget.desktop` (adjust the path):
 
 ```ini
 [Desktop Entry]
 Type=Application
 Name=Retro Widget
-Exec=/home/YOU/Apollo-Widget/build/bin/Apollo-Widget
+Exec=/home/YOU/retro-widget/build/bin/retro-widget
 X-GNOME-Autostart-enabled=true
 ```
 
@@ -169,7 +176,7 @@ X-GNOME-Autostart-enabled=true
 ### macOS, for completeness
 
 ```sh
-wails build      # → build/bin/Apollo-Widget.app
+wails build      # → build/bin/retro-widget.app
 ```
 
 Add it via System Settings → General → Login Items to run on login.
@@ -181,8 +188,8 @@ Add it via System Settings → General → Login Items to run on login.
 Open **Settings** in the widget (press <kbd>S</kbd> or the ⚙ icon). Everything is
 stored in a single JSON file:
 
-- **macOS**: `~/Library/Application Support/Apollo-Widget/config.json`
-- **Linux**: `~/.config/Apollo-Widget/config.json`
+- **macOS**: `~/Library/Application Support/retro-widget/config.json`
+- **Linux**: `~/.config/retro-widget/config.json`
 
 You can edit it by hand too; the path is shown at the bottom of the settings screen.
 
@@ -190,6 +197,67 @@ You can edit it by hand too; the path is shown at the bottom of the settings scr
 
 Leave **Location** blank to auto-detect by IP, or type a city (e.g. `Munich`).
 Choose Celsius or Fahrenheit. Coordinates are resolved once and cached.
+
+### GitHub PRs
+
+1. Create a **fine-grained or classic personal access token** at
+   <https://github.com/settings/tokens> with **read access to pull requests**
+   (classic: `repo` scope). For the **Workflows** screen also grant
+   **Actions: Read-only** (fine-grained); the classic `repo` scope already covers it.
+2. Paste it into Settings → GitHub → **Token**.
+3. List the repos to watch, one per line, as `owner/name`.
+4. *(Optional)* Set **"Only my PRs"** to your GitHub login to filter the Open PRs
+   screen to PRs you authored.
+
+The GitHub view has four screens (press **✓** to cycle):
+
+- **Open PRs** — open pull requests across your repos (optionally filtered to yours).
+- **To review** — open PRs where you're a requested reviewer (`review-requested:@me`).
+- **Workflows** — the latest GitHub Actions run per repo, with status (OK / FAIL / running).
+- **Errors** — any per-repo fetch failures (bad token, no access, repo not found).
+
+### Microsoft Teams
+
+The Teams view has two **sources** (Settings → Teams → *Source*):
+
+#### Local — macOS notifications (no keys)
+
+If you can't register an Azure app, choose **Local**. It reads delivered Teams
+notifications straight from the macOS Notification Center database — showing each
+recent message's sender + preview, with **no API keys or infrastructure**.
+
+- **Requires Full Disk Access**: System Settings → Privacy & Security → **Full Disk
+  Access** → enable **retro-widget** (during `wails dev`, grant it to your terminal
+  instead). Until granted, the view shows "grant Full Disk Access".
+- Shows **delivered notifications** (what Teams notified you about and you haven't
+  cleared) — a proxy for recent chatter, not a true unread count.
+- **macOS only.** On Linux there's no equivalent persisted store, so use Graph there.
+- The **Favorites filter** still applies (limits to matching chat/sender names).
+
+#### Microsoft Graph (Azure app)
+
+For a true unread view, register a (free) Azure AD app once. It's a **public
+client** — no secret is stored.
+
+1. Go to the [Azure Portal → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → **New registration**.
+2. Name it anything (e.g. `retro-widget`). Under **Supported account types**, pick
+   the option matching your org (usually *Accounts in this organizational directory only*).
+3. After creating it, open **Authentication** → **Add a platform** → **Mobile and
+   desktop applications**, and enable **"Allow public client flows"**
+   (Authentication → *Advanced settings* → set **Allow public client flows** to **Yes**).
+4. Under **API permissions**, add **Microsoft Graph → Delegated**: `Chat.Read` and
+   `User.Read`. Grant admin consent if your tenant requires it.
+5. Copy the **Application (client) ID** and **Directory (tenant) ID** from the app's
+   Overview page into Settings → Teams.
+   - Tenant can also be `common` or `organizations` if you prefer.
+6. Switch to the **Teams** view in the widget and press **✓** to sign in. A code +
+   URL appear on screen — open the URL, enter the code, and approve. The token is
+   cached at `…/retro-widget/teams_token.json` so you stay signed in.
+
+**About "favorites":** Microsoft Graph does not expose the Teams *favorite* flag
+for chats, so the widget shows every chat with an **unread** message. To emulate a
+favorites list, add name substrings under **Favorites filter** (one per line) — only
+matching chats will be shown.
 
 ### Salesforce 2FA (TOTP)
 
@@ -229,6 +297,43 @@ the Salesforce login screen. It supports multiple orgs, each with its own code.
 
 ---
 
+## Testing
+
+The Go backend has table-driven unit tests. Run them with:
+
+```sh
+go test ./...                          # all tests
+go test ./internal/... -cover          # per-package coverage
+go test ./internal/... -coverpkg=./internal/... -coverprofile=cov.out && go tool cover -html=cov.out
+```
+
+Coverage of the `internal/` packages is **~90%**, with several at 100%:
+
+| Package | Coverage | Notes |
+|---------|----------|-------|
+| `weather` | 100% | HTTP paths via `httptest` |
+| `github` | 100% | HTTP paths via `httptest` |
+| `totp` | 100% | uses the OS keyring (test skips if unavailable) |
+| `config` | 98% | 1 unreachable defensive branch (`json.Marshal` can't fail here) |
+| `sysstats` | ~95% | parsing fully tested; remainder is the per-OS `ps` branch + battery hardware states |
+| `teams` | ~75% | pure logic, the Graph client, the local-notification parser and the file cache are covered |
+
+Some paths are **intentionally not unit-tested** because they require live external
+state that can't be faithfully faked in `go test`:
+
+- **MSAL device-code sign-in** (`teams.Login`) and the authenticated Graph fetch —
+  need a real Azure app + interactive login.
+- **The macOS notification DB read** (`readTeamsNotifications`) — needs the
+  TCC-protected database + Full Disk Access.
+- **The Wails-bound layer** (`main.go`, `app.go`, `chrome_darwin.go`) — needs the
+  desktop runtime/window.
+
+To keep the rest testable, HTTP endpoints are overridable package vars, the
+notification reader and shell commands are indirected behind function vars, and the
+parsing logic is split out from the I/O.
+
+---
+
 ## Project layout
 
 ```
@@ -239,12 +344,14 @@ the Salesforce login screen. It supports multiple orgs, each with its own code.
 │   ├── config/             # JSON settings load/save (+ view migration)
 │   ├── weather/            # Open-Meteo client + geocoding + IP detection
 │   ├── sysstats/           # CPU / RAM / battery / uptime + top processes (per-OS, no cgo for CPU)
+│   ├── github/             # open PRs from selected repos
+│   ├── teams/              # MS Graph + MSAL device-code auth + token cache
 │   └── totp/               # RFC 6238 codes, OS-keychain secrets, PIN + auto-lock
 └── frontend/
     └── src/
         ├── App.svelte      # the device chrome (screen, rocker, ✓ button)
         ├── lib/store.ts    # view state, polling, button actions
-        ├── views/          # Clock, Weather, System, Totp
+        ├── views/          # Clock, Weather, System, Github, Teams, Totp
         ├── components/     # DotMatrix glyph
         └── Settings.svelte # settings overlay
 ```

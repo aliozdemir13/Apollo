@@ -5,6 +5,7 @@ import (
 	"context"
 	"math"
 	"os"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -19,6 +20,10 @@ type Service struct {
 	hostname string        // Cached to avoid constant system calls
 	stopChan chan struct{} // Controls the background goroutine shutdown
 }
+
+// commandOutput runs a command and returns stdout. Indirected so tests can
+// simulate command failures.
+var commandOutput = func(c *exec.Cmd) ([]byte, error) { return c.Output() }
 
 // New starts the background CPU sampler and returns the Service
 func New() *Service {

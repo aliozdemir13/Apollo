@@ -8,6 +8,12 @@ import {
   GetWeather,
   GetSystemStats,
   GetTopProcesses,
+  GetGitHubPRs,
+  GetGitHubReviews,
+  GetGitHubWorkflows,
+  GetTeamsUnread,
+  TeamsLoggedIn,
+  TeamsLogin,
   OpenURL,
   MFAGetStatus,
   MFAGetCodes,
@@ -30,7 +36,7 @@ export interface DeviceCode {
   message: string;
 }
 
-const ALL_VIEWS = ["clock", "weather", "system", "totp"];
+const ALL_VIEWS = ["clock", "weather", "system", "github", "teams", "totp"];
 
 // Seconds between auto-refreshes per view. Clock updates from the 1s tick.
 // totp is handled by a dedicated per-second tick (mfaTick), not this cadence.
@@ -38,6 +44,8 @@ const CADENCE: Record<string, number> = {
   clock: 0,
   weather: 600,
   system: 3,
+  github: 300,
+  teams: 90,
   totp: 99999,
 };
 
@@ -52,6 +60,12 @@ export const system = writable<Async<any>>({ loading: true });
 // Inner sub-view of the system screen, toggled by the orange button.
 export const systemMode = writable<"stats" | "apps">("stats");
 export const topApps = writable<Async<any>>({ loading: true });
+export const github = writable<Async<any>>({ loading: true });
+// GitHub sub-screen, cycled by the orange button.
+export const githubMode = writable<"prs" | "reviews" | "workflows" | "errors">("prs");
+export const githubReviews = writable<Async<any>>({ loading: true });
+export const githubWorkflows = writable<Async<any>>({ loading: true });
+export const teams = writable<Async<any>>({ loading: true });
 
 // ---- MFA / 2FA state ----
 export const mfaHasPin = writable(false);
@@ -65,7 +79,9 @@ let lastCodeSecs = 0;
 
 export const settings = writable<any>(null);
 export const settingsOpen = writable(false);
+export const teamsLoggedIn = writable(false);
 export const deviceCode = writable<DeviceCode | null>(null);
+export const teamsLoggingIn = writable(false);
 
 export const currentView = derived([views, index], ([$views, $index]) =>
   $views.length ? $views[$index % $views.length] : "clock"
@@ -105,10 +121,38 @@ export function refresh(id: string, force = false): void {
       load(system, GetSystemStats, id);
       load(topApps, GetTopProcesses, "topApps");
       break;
+    case "github":
+      load(github, GetGitHubPRs, id);
+      loadGithubMode();
+      break;
+    case "teams":
+      TeamsLoggedIn().then((v) => teamsLoggedIn.set(v));
+      load(teams, GetTeamsUnread, id);
+      break;
     case "totp":
       refreshMFA();
       break;
   }
+}
+
+// ---- GitHub sub-screens ----------------------------------------------------
+
+const GITHUB_MODES = ["prs", "reviews", "workflows", "errors"] as const;
+
+// loadGithubMode fetches the data backing the currently selected sub-screen.
+// PRs (and their per-repo errors) are loaded by the main github refresh.
+function loadGithubMode(): void {
+  const m = get(githubMode);
+  if (m === "reviews") load(githubReviews, GetGitHubReviews, "ghReviews");
+  else if (m === "workflows") load(githubWorkflows, GetGitHubWorkflows, "ghWorkflows");
+}
+
+// setGithubMode moves the GitHub sub-screen by dir (+1/-1) and loads its data.
+function setGithubMode(dir: number): void {
+  const i = GITHUB_MODES.indexOf(get(githubMode));
+  const n = (i + dir + GITHUB_MODES.length) % GITHUB_MODES.length;
+  githubMode.set(GITHUB_MODES[n]);
+  loadGithubMode();
 }
 
 // ---- in-app screen navigation (horizontal left/right buttons) --------------
@@ -125,12 +169,14 @@ function changeScreen(dir: number): void {
   const v = get(currentView);
   if (v === "system") {
     systemMode.update((m) => (m === "stats" ? "apps" : "stats"));
+  } else if (v === "github") {
+    setGithubMode(dir);
   }
 }
 
 // hasSubScreens reports whether the current view responds to left/right.
 export function hasSubScreens(view: string): boolean {
-  return view === "system";
+  return view === "system" || view === "github";
 }
 
 // ---- MFA actions -----------------------------------------------------------
@@ -236,7 +282,8 @@ export function prev(): void {
   refresh(get(currentView));
 }
 
-// The orange check button: context action. Refreshes the current view, 
+// The orange check button: context action. Refreshes the current view, or
+// triggers Teams sign-in when on the Teams view and not yet logged in.
 export async function confirm(): Promise<void> {
   const view = get(currentView);
   // 2FA: the orange button is a lock (not refresh). When unlocked it locks the
@@ -245,8 +292,30 @@ export async function confirm(): Promise<void> {
     if (get(mfaUnlocked)) lockMFA();
     return;
   }
+  // Teams (Graph mode only): when signed out, the orange button starts sign-in.
+  // In local mode there's no sign-in, so it just refreshes.
+  if (
+    view === "teams" &&
+    !get(teamsLoggedIn) &&
+    get(settings)?.teamsSource !== "local"
+  ) {
+    await startTeamsLogin();
+    return;
+  }
   // Every other view: the orange button refreshes the current screen.
   refresh(view, true);
+}
+
+export async function startTeamsLogin(): Promise<void> {
+  teamsLoggingIn.set(true);
+  try {
+    // Kicks off the non-blocking Go device flow setup.
+    // The actual token resolution happens via background events now.
+    await TeamsLogin();
+  } catch (e: any) {
+    teams.update((s) => ({ ...s, error: String(e?.message || e) }));
+    teamsLoggingIn.set(false);
+  }
 }
 
 export function openExternal(url: string): void {
@@ -270,6 +339,8 @@ export async function saveSettings(s: any): Promise<void> {
   }
   // Force re-fetch of data that may have changed.
   lastFetched["weather"] = 0;
+  lastFetched["github"] = 0;
+  lastFetched["teams"] = 0;
   refresh(get(currentView), true);
 }
 
@@ -278,7 +349,28 @@ export async function saveSettings(s: any): Promise<void> {
 let timer: number | undefined;
 
 export async function start(): Promise<void> {
+  // 1. Listen for the Device Code payload from the Go engine
+  EventsOn("teams:device_code", (dc: DeviceCode) => {
+    deviceCode.set(dc);
+    teamsLoggingIn.set(false);
+  });
 
+  // 2. Listen for the user successfully authorizing in the web browser
+  EventsOn("teams:auth_complete", () => {
+    deviceCode.set(null);
+    teamsLoggedIn.set(true);
+    teamsLoggingIn.set(false);
+    refresh("teams", true);
+  });
+
+  // 3. Listen for any errors during the device verification loop
+  EventsOn("teams:login_error", (err: string) => {
+    deviceCode.set(null);
+    teamsLoggingIn.set(false);
+    teams.update((s) => ({ ...s, error: err }));
+  });
+
+  // Load configuration and run base refresh routine
   await loadSettings();
   refresh(get(currentView), true);
 

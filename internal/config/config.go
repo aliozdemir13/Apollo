@@ -2,9 +2,8 @@
 //
 // Settings live in a single JSON file under the OS config dir:
 //
-//		macOS:  ~/Library/Application Support/Apollo/config.json
-//		Linux:  ~/.config/Apollo/config.json
-//	 	Windows: %APPDATA%\Apollo\config.json
+//	macOS:  ~/Library/Application Support/Apollo-Widget/config.json
+//	Linux:  ~/.config/Apollo-Widget/config.json
 package config
 
 import (
@@ -20,6 +19,27 @@ type Location struct {
 	Name string  `json:"name"`
 	Lat  float64 `json:"lat"`
 	Lon  float64 `json:"lon"`
+}
+
+// GitHub holds the credentials and repo selection for the PR view.
+type GitHub struct {
+	Token string   `json:"token"`           // personal access token (repo scope)
+	Repos []string `json:"repos"`           // "owner/name" entries
+	Login string   `json:"login,omitempty"` // optional: filter to PRs authored by / assigned to
+}
+
+// Teams holds the Azure AD app registration used for the Microsoft Graph
+// device-code flow. No client secret is needed for a public client.
+type Teams struct {
+	// Source selects where unread data comes from: "graph" (Microsoft Graph,
+	// needs an Azure app) or "local" (macOS Notification Center, needs Full Disk
+	// Access, no keys). Empty defaults to "graph".
+	Source   string `json:"source"`
+	ClientID string `json:"clientId"`
+	TenantID string `json:"tenantId"` // "common", "organizations", or a tenant GUID
+	// Favorites is an optional allow-list of chat-name substrings. When set,
+	// only matching chats are shown (emulating the Teams "favorites" section).
+	Favorites []string `json:"favorites"`
 }
 
 // TotpAccount is non-secret metadata for one TOTP entry (e.g. a Salesforce
@@ -39,6 +59,8 @@ type MFA struct {
 type Config struct {
 	Location Location `json:"location"`
 	Units    string   `json:"units"` // "celsius" | "fahrenheit"
+	GitHub   GitHub   `json:"github"`
+	Teams    Teams    `json:"teams"`
 	MFA      MFA      `json:"mfa"`
 	// Views is the ordered list of view ids the device cycles through.
 	Views []string `json:"views"`
@@ -60,7 +82,7 @@ func contains(list []string, v string) bool {
 }
 
 // AllViews is the canonical set of view ids understood by the frontend.
-var AllViews = []string{"clock", "weather", "system", "totp"}
+var AllViews = []string{"clock", "weather", "system", "github", "teams", "totp"}
 
 // Dir returns the directory the config file lives in, creating it if needed.
 func Dir() (string, error) {
@@ -68,7 +90,7 @@ func Dir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(base, "Apollo")
+	dir := filepath.Join(base, "Apollo-Widget")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
@@ -76,12 +98,14 @@ func Dir() (string, error) {
 }
 
 func defaults(path string) *Config {
+	// SeenViews is intentionally left nil: the migration in Load populates it.
+	// Pre-filling it would make existing configs (which omit seenViews) appear
+	// to have already seen every view, so newly added views would never surface.
 	return &Config{
-		Location:  Location{Name: ""},
-		Units:     "celsius",
-		Views:     append([]string(nil), AllViews...),
-		SeenViews: append([]string(nil), AllViews...),
-		path:      path,
+		Location: Location{Name: ""},
+		Units:    "celsius",
+		Views:    append([]string(nil), AllViews...),
+		path:     path,
 	}
 }
 

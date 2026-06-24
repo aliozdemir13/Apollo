@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"os/exec"
+	"strings"
 )
 
 // WindowsProcess maps the output string from our PowerShell pipeline
@@ -54,4 +55,14 @@ func (s *Service) TopProcesses(ctx context.Context) ([]Process, error) {
 	}
 
 	return procs, nil
+}
+
+// added for cross-platform testing issue resolution. not really needed for windows
+func cleanName(name string) string {
+	// Example Windows-specific cleaning: strip out trailing .exe case-insensitively
+	lower := strings.ToLower(name)
+	if strings.HasSuffix(lower, ".exe") {
+		return name[:len(name)-4]
+	}
+	return name
 }
