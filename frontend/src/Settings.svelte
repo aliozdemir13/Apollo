@@ -14,9 +14,11 @@
     clock: "Clock & date",
     weather: "Weather",
     system: "System stats",
-    totp: "2FA",
+    github: "GitHub PRs",
+    teams: "Teams unread",
+    totp: "2FA (Salesforce)",
   };
-  const ALL_VIEWS = ["clock", "weather", "system", "totp"];
+  const ALL_VIEWS = ["clock", "weather", "system", "github", "teams", "totp"];
 
   // ---- MFA management (operates immediately, separate from Save) ----
   let mfaAccounts: any[] = [];
@@ -85,8 +87,11 @@
   // Local editable copy.
   let s = JSON.parse(JSON.stringify($settings || {}));
   s.units = s.units || "celsius";
+  s.teamsSource = s.teamsSource || "graph";
   s.views = s.views?.length ? s.views : [...ALL_VIEWS];
 
+  let reposText = (s.githubRepos || []).join("\n");
+  let favText = (s.teamsFavorites || []).join("\n");
   let saving = false;
 
   function toggleView(v: string) {
@@ -100,6 +105,14 @@
 
   async function onSave() {
     saving = true;
+    s.githubRepos = reposText
+      .split("\n")
+      .map((x: string) => x.trim())
+      .filter(Boolean);
+    s.teamsFavorites = favText
+      .split("\n")
+      .map((x: string) => x.trim())
+      .filter(Boolean);
     if (!s.views.length) s.views = [...ALL_VIEWS];
     try {
       await saveSettings(s);
@@ -143,7 +156,49 @@
     </section>
 
     <section>
-      <h3>2FA</h3>
+      <h3>GitHub</h3>
+      <label>Token (repo scope)
+        <input type="password" bind:value={s.githubToken} placeholder="ghp_…" />
+      </label>
+      <label>Repos (one per line, owner/name)
+        <textarea rows="3" bind:value={reposText} placeholder="anthropics/anthropic-sdk-python"></textarea>
+      </label>
+      <label>Only my PRs (optional GitHub login)
+        <input bind:value={s.githubLogin} placeholder="octocat" />
+      </label>
+    </section>
+
+    <section>
+      <h3>Teams</h3>
+      <label>Source
+        <select bind:value={s.teamsSource}>
+          <option value="local">Local — macOS notifications (no keys)</option>
+          <option value="graph">Microsoft Graph (Azure app)</option>
+        </select>
+      </label>
+
+      {#if s.teamsSource === "local"}
+        <div class="note">
+          Reads delivered Teams notifications from macOS. Requires <b>Full Disk
+          Access</b> for this app (System Settings → Privacy &amp; Security → Full
+          Disk Access). macOS only.
+        </div>
+      {:else}
+        <label>Azure App (client) ID
+          <input bind:value={s.teamsClientId} placeholder="00000000-0000-…" />
+        </label>
+        <label>Tenant ID
+          <input bind:value={s.teamsTenantId} placeholder="common / organizations / GUID" />
+        </label>
+      {/if}
+
+      <label>Favorites filter (one per line, optional)
+        <textarea rows="2" bind:value={favText} placeholder="Team name or person"></textarea>
+      </label>
+    </section>
+
+    <section>
+      <h3>2FA — Salesforce orgs</h3>
 
       <label>Unlock PIN ({mfaHasPin ? "set" : "not set"})
         <div class="inline">

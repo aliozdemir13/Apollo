@@ -106,9 +106,19 @@
 <style>
   .totp {
     width: 100%;
+    flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
+  }
+  .codes {
+    flex: 1;
+    justify-content: center;
+  }
+  .list {
+    align-self: stretch;
+    align-items: center; /* horizontally center each tile */
   }
 
   /* lock screen */
@@ -167,6 +177,7 @@
     flex-direction: column;
     align-items: center;
   }
+  /* vertical scroller: full-width tiles that keep their height (readable) */
   .list {
     width: 100%;
     display: flex;
@@ -174,10 +185,13 @@
     gap: 8px;
     max-height: 150px;
     overflow-y: auto;
+    overflow-x: hidden;
   }
   .tile {
     position: relative;
-    width: 100%;
+    flex: 0 0 auto; /* never shrink vertically */
+    width: 90%;
+    max-width: 190px;
     border-radius: 9px;
     background: rgba(255, 255, 255, 0.05);
     overflow: hidden;

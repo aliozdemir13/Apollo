@@ -11,6 +11,7 @@
     hasSubScreens,
     currentView,
     settingsOpen,
+    teamsLoggedIn,
     deviceCode,
     mfaUnlocked,
     mfaHasPin,
@@ -21,6 +22,8 @@
   import Clock from "./views/Clock.svelte";
   import Weather from "./views/Weather.svelte";
   import System from "./views/System.svelte";
+  import Github from "./views/Github.svelte";
+  import Teams from "./views/Teams.svelte";
   import Totp from "./views/Totp.svelte";
   import Settings from "./Settings.svelte";
 
@@ -28,13 +31,17 @@
     clock: Clock,
     weather: Weather,
     system: System,
+    github: Github,
+    teams: Teams,
     totp: Totp,
   };
   const MATRIX_KIND: Record<string, any> = {
     clock: "grid",
     weather: "sun",
     system: "cpu",
-    totp: "cpu",
+    github: "git",
+    teams: "chat",
+    totp: "lock",
   };
 
   // Map the live weather (WMO code + wind) to a dot-matrix glyph.
@@ -55,7 +62,11 @@
 
   // Contextual footer hint.
   $: hint =
-    view === "totp"
+    view === "teams" && $deviceCode
+      ? "complete sign-in in browser"
+      : view === "teams" && !$teamsLoggedIn
+      ? "to connect"
+      : view === "totp"
       ? !$mfaHasPin
         ? "set a PIN in settings"
         : $mfaUnlocked
@@ -101,12 +112,6 @@
 
 <div class="stage">
   <div class="device">
-    <!-- top-of-device tool dots: settings + quit, revealed on hover -->
-    <div class="tools">
-      <button class="tool" title="Settings (s)" on:click={() => settingsOpen.set(true)}>⚙</button>
-      <button class="tool" title="Quit" on:click={() => Quit()}>⏻</button>
-    </div>
-
     <div class="layout">
       <!-- LCD SCREEN -->
       <div class="screen">
@@ -182,7 +187,26 @@
           {/if}
         </button>
 
-        <div class="master lcd-mono">apollo</div>
+        <div class="cbottom">
+          <div class="toolrow">
+            <button class="dbtn settings" title="Settings (s)" on:click={() => settingsOpen.set(true)}>
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3" />
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+                />
+              </svg>
+            </button>
+            <button class="dbtn power" title="Quit" on:click={() => Quit()}>
+              <span class="led"></span>
+              <svg viewBox="0 0 24 24">
+                <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+                <line x1="12" y1="2" x2="12" y2="12" />
+              </svg>
+            </button>
+          </div>
+          <div class="master lcd-mono">Apollo</div>
+        </div>
       </div>
     </div>
 
@@ -218,32 +242,80 @@
     --wails-draggable: drag;
   }
 
-  .tools {
-    position: absolute;
-    top: 6px;
-    left: 12px;
+  /* bottom-right group: handle + settings/power buttons */
+  .cbottom {
+    margin-top: auto;
+    width: 100%;
     display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: 6px;
-    opacity: 0;
-    transition: opacity 0.15s;
-    z-index: 5;
+  }
+  /* match the 56px width of the rocker / orange button so the buttons line up */
+  .toolrow {
+    width: 56px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .dbtn {
+    position: relative;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, var(--btn-face-hi), var(--btn-face-lo));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.85),
+      0 1px 2px rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     --wails-draggable: no-drag;
   }
-  .device:hover .tools {
-    opacity: 1;
+  .dbtn:active {
+    transform: translateY(0.5px);
   }
-  .tool {
-    width: 18px;
-    height: 18px;
-    font-size: 11px;
-    line-height: 1;
-    color: rgba(0, 0, 0, 0.45);
+  .dbtn svg {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: #3a3833;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* power button: looks like an orange light shining while the app is on */
+  .dbtn.power {
+    background:
+      radial-gradient(circle at 50% 42%, rgba(224, 113, 47, 0.5), rgba(224, 113, 47, 0) 70%),
+      linear-gradient(180deg, var(--btn-face-hi), var(--btn-face-lo));
+    animation: powerGlow 2.6s ease-in-out infinite;
+  }
+  .dbtn.power svg {
+    stroke: var(--accent);
+    position: relative;
+    z-index: 1;
+  }
+  .dbtn.power .led {
+    position: absolute;
+    inset: 0;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.35);
+    pointer-events: none;
   }
-  .tool:hover {
-    color: #000;
-    background: rgba(255, 255, 255, 0.6);
+  @keyframes powerGlow {
+    0%,
+    100% {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.85),
+        0 1px 2px rgba(0, 0, 0, 0.35),
+        0 0 5px 0.5px rgba(224, 113, 47, 0.45);
+    }
+    50% {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.85),
+        0 1px 2px rgba(0, 0, 0, 0.35),
+        0 0 10px 2px rgba(224, 113, 47, 0.85);
+    }
   }
 
   .layout {
@@ -450,8 +522,7 @@
   }
 
   .master {
-    margin-top: auto;
-    font-size: 12.5px;
+    font-size: 8.5px;
     letter-spacing: 0.01em;
     white-space: nowrap;
     color: rgba(0, 0, 0, 0.5);

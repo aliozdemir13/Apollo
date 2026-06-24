@@ -24,6 +24,12 @@ func New() *Service {
 	return &Service{client: &http.Client{Timeout: 12 * time.Second}}
 }
 
+var (
+	geocodeBase  = "https://geocoding-api.open-meteo.com/v1/search"
+	ipapiURL     = "https://ipapi.co/json/"
+	forecastBase = "https://api.open-meteo.com/v1/forecast"
+)
+
 // Geocode resolves a place name to coordinates via Open-Meteo's geocoder.
 func (s *Service) Geocode(ctx context.Context, name string) (GeoResult, error) {
 	q := url.Values{}
@@ -31,7 +37,7 @@ func (s *Service) Geocode(ctx context.Context, name string) (GeoResult, error) {
 	q.Set("language", "en")
 	q.Set("format", "json")
 	q.Set("name", name)
-	u := "https://geocoding-api.open-meteo.com/v1/search?" + q.Encode()
+	u := geocodeBase + "?" + q.Encode()
 
 	slog.Info("API call", "url", u)
 
@@ -60,7 +66,7 @@ func (s *Service) DetectLocation(ctx context.Context) (GeoResult, error) {
 		Longitude float64 `json:"longitude"`
 		Error     bool    `json:"error"`
 	}
-	if err := s.getJSON(ctx, "https://ipapi.co/json/", &out); err != nil {
+	if err := s.getJSON(ctx, ipapiURL, &out); err != nil {
 		// error for location definition via ip address logged in the getJSON
 		return GeoResult{}, err
 	}
@@ -92,7 +98,7 @@ func (s *Service) CurrentWeather(ctx context.Context, lat, lon float64, units, l
 	q.Set("current", "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m")
 	q.Set("temperature_unit", tempUnit)
 	q.Set("wind_speed_unit", "kmh")
-	u := "https://api.open-meteo.com/v1/forecast?" + q.Encode()
+	u := forecastBase + "?" + q.Encode()
 
 	slog.Info("API call", "url", u)
 

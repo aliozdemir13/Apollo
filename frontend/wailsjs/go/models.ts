@@ -19,6 +19,125 @@ export namespace config {
 
 }
 
+export namespace github {
+	
+	export class PR {
+	    repo: string;
+	    number: number;
+	    title: string;
+	    author: string;
+	    url: string;
+	    draft: boolean;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PR(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repo = source["repo"];
+	        this.number = source["number"];
+	        this.title = source["title"];
+	        this.author = source["author"];
+	        this.url = source["url"];
+	        this.draft = source["draft"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+	export class Result {
+	    prs: PR[];
+	    errors: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Result(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.prs = this.convertValues(source["prs"], PR);
+	        this.errors = source["errors"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class WorkflowRun {
+	    repo: string;
+	    name: string;
+	    status: string;
+	    conclusion: string;
+	    branch: string;
+	    event: string;
+	    url: string;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkflowRun(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repo = source["repo"];
+	        this.name = source["name"];
+	        this.status = source["status"];
+	        this.conclusion = source["conclusion"];
+	        this.branch = source["branch"];
+	        this.event = source["event"];
+	        this.url = source["url"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+	export class WorkflowResult {
+	    runs: WorkflowRun[];
+	    errors: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkflowResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.runs = this.convertValues(source["runs"], WorkflowRun);
+	        this.errors = source["errors"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace main {
 	
 	export class MFACodeEntry {
@@ -98,6 +217,13 @@ export namespace main {
 	export class Settings {
 	    locationName: string;
 	    units: string;
+	    githubToken: string;
+	    githubRepos: string[];
+	    githubLogin: string;
+	    teamsSource: string;
+	    teamsClientId: string;
+	    teamsTenantId: string;
+	    teamsFavorites: string[];
 	    views: string[];
 	    configPath: string;
 	
@@ -109,6 +235,13 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.locationName = source["locationName"];
 	        this.units = source["units"];
+	        this.githubToken = source["githubToken"];
+	        this.githubRepos = source["githubRepos"];
+	        this.githubLogin = source["githubLogin"];
+	        this.teamsSource = source["teamsSource"];
+	        this.teamsClientId = source["teamsClientId"];
+	        this.teamsTenantId = source["teamsTenantId"];
+	        this.teamsFavorites = source["teamsFavorites"];
 	        this.views = source["views"];
 	        this.configPath = source["configPath"];
 	    }
@@ -159,6 +292,65 @@ export namespace sysstats {
 	        this.uptimeHours = source["uptimeHours"];
 	        this.hostname = source["hostname"];
 	    }
+	}
+
+}
+
+export namespace teams {
+	
+	export class Chat {
+	    id: string;
+	    name: string;
+	    preview: string;
+	    from: string;
+	    timestamp: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Chat(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.preview = source["preview"];
+	        this.from = source["from"];
+	        this.timestamp = source["timestamp"];
+	    }
+	}
+	export class Result {
+	    unreadChats: Chat[];
+	    totalUnread: number;
+	    needsLogin: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Result(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.unreadChats = this.convertValues(source["unreadChats"], Chat);
+	        this.totalUnread = source["totalUnread"];
+	        this.needsLogin = source["needsLogin"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

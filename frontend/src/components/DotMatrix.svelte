@@ -74,6 +74,17 @@
       ".........",
       ".........",
     ],
+    lock: [
+      ".........",
+      "...###...",
+      "..#...#..",
+      "..#...#..",
+      ".#######.",
+      ".###.###.",
+      ".###.###.",
+      ".#######.",
+      ".........",
+    ],
   };
 
   // Each pattern is a predicate over (row, col) deciding if a dot is lit.
@@ -99,6 +110,20 @@
         const pinsLR =
           (c === 0 || c === SIZE - 1) && r % 2 === 0 && r >= 2 && r <= 6;
         return core || pins || pinsLR;
+      }
+      case "git": {
+        // two nodes joined by a line (branch glyph)
+        if (c === 2 && r >= 2 && r <= 6) return true; // trunk
+        if (r === 2 && c >= 2 && c <= 6) return true; // branch out
+        if (c === 6 && r >= 2 && r <= 4) return true;
+        return (r === 6 && c === 2) || (r === 4 && c === 6) || (r === 2 && c === 2);
+      }
+      case "chat": {
+        // speech bubble
+        const body = r >= 1 && r <= 5 && c >= 1 && c <= 7;
+        const tail = (r === 6 && c === 3) || (r === 7 && c === 2);
+        const hollow = r >= 2 && r <= 4 && c >= 2 && c <= 6;
+        return (body && !hollow) || tail;
       }
       default: {
         // rounded filled square (the default emblem)

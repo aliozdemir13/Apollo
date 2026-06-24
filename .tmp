@@ -1,0 +1,26 @@
+{
+  "location": {
+    "name": "Berlin",
+    "lat": 52.52,
+    "lon": 13.4
+  },
+  "units": "celsius",
+  "github": {
+    "token": "",
+    "repos": null
+  },
+  "teams": {
+    "source": "local",
+    "clientId": "old-client-id",
+    "tenantId": "old-tenant-id",
+    "favorites": null
+  },
+  "mfa": {
+    "accounts": null
+  },
+  "views": [
+    "totp",
+    "github",
+    "system"
+  ]
+}

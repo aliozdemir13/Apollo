@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/aliozdemir13/Apollo/internal/config"
+	"github.com/aliozdemir13/Apollo/internal/github"
 	"github.com/aliozdemir13/Apollo/internal/sysstats"
+	"github.com/aliozdemir13/Apollo/internal/teams"
 	"github.com/aliozdemir13/Apollo/internal/totp"
 	"github.com/aliozdemir13/Apollo/internal/weather"
 
@@ -25,6 +28,8 @@ type App struct {
 	cfg     *config.Config
 	weather *weather.Service
 	sys     *sysstats.Service
+	gh      *github.Service
+	teams   *teams.Service
 	mfa     *totp.Service
 }
 
@@ -40,9 +45,17 @@ func NewApp() *App {
 		cfg:     cfg,
 		weather: weather.New(),
 		sys:     sysstats.New(),
-		mfa:     totp.New("Apollo"),
+		gh:      github.New(),
+		mfa:     totp.New("Apollo-Widget"),
 	}
+	a.rebuildTeams()
 	return a
+}
+
+func (a *App) rebuildTeams() {
+	dir, _ := config.Dir()
+	cachePath := filepath.Join(dir, "teams_token.json")
+	a.teams = teams.New(a.cfg.Teams.ClientID, a.cfg.Teams.TenantID, cachePath)
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -66,19 +79,33 @@ func (a *App) shutdown(ctx context.Context) {
 
 // Settings is the flat DTO exchanged with the settings screen.
 type Settings struct {
-	LocationName string   `json:"locationName"`
-	Units        string   `json:"units"`
-	Views        []string `json:"views"`
-	ConfigPath   string   `json:"configPath"`
+	LocationName   string   `json:"locationName"`
+	Units          string   `json:"units"`
+	GithubToken    string   `json:"githubToken"`
+	GithubRepos    []string `json:"githubRepos"`
+	GithubLogin    string   `json:"githubLogin"`
+	TeamsSource    string   `json:"teamsSource"`
+	TeamsClientID  string   `json:"teamsClientId"`
+	TeamsTenantID  string   `json:"teamsTenantId"`
+	TeamsFavorites []string `json:"teamsFavorites"`
+	Views          []string `json:"views"`
+	ConfigPath     string   `json:"configPath"`
 }
 
 // GetSettings returns the current configuration for the settings screen.
 func (a *App) GetSettings() Settings {
 	return Settings{
-		LocationName: a.cfg.Location.Name,
-		Units:        a.cfg.Units,
-		Views:        a.cfg.Views,
-		ConfigPath:   a.cfg.Path(),
+		LocationName:   a.cfg.Location.Name,
+		Units:          a.cfg.Units,
+		GithubToken:    a.cfg.GitHub.Token,
+		GithubRepos:    a.cfg.GitHub.Repos,
+		GithubLogin:    a.cfg.GitHub.Login,
+		TeamsSource:    a.cfg.Teams.Source,
+		TeamsClientID:  a.cfg.Teams.ClientID,
+		TeamsTenantID:  a.cfg.Teams.TenantID,
+		TeamsFavorites: a.cfg.Teams.Favorites,
+		Views:          a.cfg.Views,
+		ConfigPath:     a.cfg.Path(),
 	}
 }
 
@@ -86,6 +113,7 @@ func (a *App) GetSettings() Settings {
 // clears any cached coordinates so they are re-resolved on next fetch.
 func (a *App) SaveSettings(s Settings) error {
 	locationChanged := s.LocationName != a.cfg.Location.Name
+	teamsChanged := s.TeamsClientID != a.cfg.Teams.ClientID || s.TeamsTenantID != a.cfg.Teams.TenantID
 
 	a.cfg.Location.Name = s.LocationName
 	if locationChanged {
@@ -97,10 +125,20 @@ func (a *App) SaveSettings(s Settings) error {
 	} else {
 		a.cfg.Units = "celsius"
 	}
+	a.cfg.GitHub.Token = s.GithubToken
+	a.cfg.GitHub.Repos = s.GithubRepos
+	a.cfg.GitHub.Login = s.GithubLogin
+	a.cfg.Teams.Source = s.TeamsSource
+	a.cfg.Teams.ClientID = s.TeamsClientID
+	a.cfg.Teams.TenantID = s.TeamsTenantID
+	a.cfg.Teams.Favorites = s.TeamsFavorites
 	if len(s.Views) > 0 {
 		a.cfg.Views = s.Views
 	}
 
+	if teamsChanged {
+		a.rebuildTeams()
+	}
 	return a.cfg.Save()
 }
 
@@ -152,6 +190,74 @@ func (a *App) GetSystemStats() (sysstats.Stats, error) {
 // GetTopProcesses returns the top CPU-consuming processes for the system view.
 func (a *App) GetTopProcesses() ([]sysstats.Process, error) {
 	return a.sys.TopProcesses(a.ctx)
+}
+
+// ---- GitHub -----------------------------------------------------------------
+
+// GetGitHubPRs returns open PRs across the configured repos.
+func (a *App) GetGitHubPRs() (github.Result, error) {
+	return a.gh.GetPRs(a.ctx, a.cfg.GitHub.Token, a.cfg.GitHub.Repos, a.cfg.GitHub.Login)
+}
+
+// GetGitHubReviews returns open PRs awaiting my review across the configured repos.
+func (a *App) GetGitHubReviews() (github.Result, error) {
+	return a.gh.GetReviewRequests(a.ctx, a.cfg.GitHub.Token, a.cfg.GitHub.Repos)
+}
+
+// GetGitHubWorkflows returns the latest Actions run per configured repo.
+func (a *App) GetGitHubWorkflows() (github.WorkflowResult, error) {
+	return a.gh.GetWorkflowRuns(a.ctx, a.cfg.GitHub.Token, a.cfg.GitHub.Repos)
+}
+
+// ---- Teams ------------------------------------------------------------------
+
+// GetTeamsUnread returns unread chats from the configured source.
+func (a *App) GetTeamsUnread() (teams.Result, error) {
+	if a.cfg.Teams.Source == "local" {
+		return a.teams.GetUnreadLocal(a.ctx, a.cfg.Teams.Favorites)
+	}
+	if !a.teams.Configured() {
+		return teams.Result{}, fmt.Errorf("Teams is not configured")
+	}
+	return a.teams.GetUnread(a.ctx, a.cfg.Teams.Favorites)
+}
+
+// TeamsConfigured reports whether an Azure client ID has been set.
+func (a *App) TeamsConfigured() bool { return a.teams.Configured() }
+
+// TeamsLoggedIn reports whether a cached token is available.
+func (a *App) TeamsLoggedIn() bool { return a.teams.LoggedIn(a.ctx) }
+
+// TeamsLogin starts the device-code flow. The device code is emitted to the
+// frontend via the "teams:devicecode" event; this call resolves once sign-in
+// completes (or errors).
+// Inside app.go -> TeamsLogin()
+func (a *App) TeamsLogin() {
+	go func() {
+		fmt.Println("[Teams] Starting login flow...")
+		err := a.teams.Login(a.ctx, func(dc teams.DeviceCode) {
+			// Force lowerCamelCase keys to match your TypeScript/Svelte declarations perfectly
+			payload := map[string]string{
+				"userCode":        dc.UserCode,
+				"verificationUrl": dc.VerificationURL,
+				"message":         dc.Message,
+			}
+			runtime.EventsEmit(a.ctx, "teams:device_code", payload)
+
+			// Open the browser
+			runtime.BrowserOpenURL(a.ctx, dc.VerificationURL)
+		})
+
+		if err != nil {
+			fmt.Println("[Teams] Login loop error:", err)
+			runtime.EventsEmit(a.ctx, "teams:login_error", err.Error())
+			return
+		}
+
+		// Unblocked!
+		fmt.Println("[Teams] Authentication verified by Microsoft! Transitioning UI...")
+		runtime.EventsEmit(a.ctx, "teams:auth_complete", true)
+	}()
 }
 
 // ---- MFA / TOTP -------------------------------------------------------------

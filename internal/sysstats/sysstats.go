@@ -5,6 +5,7 @@ import (
 	"context"
 	"math"
 	"os"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -19,6 +20,10 @@ type Service struct {
 	hostname string        // Cached to avoid constant system calls
 	stopChan chan struct{} // Controls the background goroutine shutdown
 }
+
+// commandOutput runs a command and returns stdout. Indirected so tests can
+// simulate command failures.
+var commandOutput = func(c *exec.Cmd) ([]byte, error) { return c.Output() }
 
 // New starts the background CPU sampler and returns the Service
 func New() *Service {
@@ -84,9 +89,14 @@ func (s *Service) Get(ctx context.Context) (Stats, error) {
 	return st, nil
 }
 
-// readBattery only works on laptops, for PC - it will simply be ignored
+// Expose a package-level variable for battery retrieval so we can swap it out in tests
+var getBatteryInfo = func() ([]*battery.Battery, error) {
+	return battery.GetAll()
+}
+
 func readBattery() (float64, string) {
-	bats, err := battery.GetAll()
+	// Call through our variable hook instead of calling the package directly
+	bats, err := getBatteryInfo()
 	if err != nil || len(bats) == 0 {
 		return -1, "n/a"
 	}
