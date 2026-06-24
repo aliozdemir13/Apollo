@@ -25,6 +25,7 @@ type Service struct {
 	failedAttempts int        // tracks sequential failures
 	lockoutUntil   time.Time  // tracks when the user can try again
 	unlockedUntil  time.Time
+	isTesting      bool // flag to bypass execution delays during unit tests
 }
 
 // New returns a Service that namespaces all keychain entries under `service`.
@@ -106,7 +107,7 @@ func (s *Service) HasPin() bool {
 
 // VerifyPin checks a PIN against the stored hash with built-in rate throttling.
 func (s *Service) VerifyPin(pin string) bool {
-	// mutex lock guarantees the each attempt will be verified individually to avoid
+	// mutex lock guarantees that each attempt will be verified individually to avoid
 	// racing condition, and taking advantage of concurrency while validation is being conducted
 	s.mu.Lock()
 	// check if the service is currently under a hard lockout window
@@ -157,7 +158,9 @@ func (s *Service) VerifyPin(pin string) bool {
 		slog.Warn("Invalid PIN attempt. Introducing penalty delay.", "delay", penaltyDelay)
 
 		s.mu.Unlock()
-		time.Sleep(penaltyDelay)
+		if !s.isTesting {
+			time.Sleep(penaltyDelay)
+		}
 		s.mu.Lock()
 	}
 

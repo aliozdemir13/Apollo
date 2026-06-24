@@ -89,9 +89,14 @@ func (s *Service) Get(ctx context.Context) (Stats, error) {
 	return st, nil
 }
 
-// readBattery only works on laptops, for PC - it will simply be ignored
+// Expose a package-level variable for battery retrieval so we can swap it out in tests
+var getBatteryInfo = func() ([]*battery.Battery, error) {
+	return battery.GetAll()
+}
+
 func readBattery() (float64, string) {
-	bats, err := battery.GetAll()
+	// Call through our variable hook instead of calling the package directly
+	bats, err := getBatteryInfo()
 	if err != nil || len(bats) == 0 {
 		return -1, "n/a"
 	}

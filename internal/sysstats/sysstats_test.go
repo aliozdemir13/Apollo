@@ -5,15 +5,95 @@ import (
 	"errors"
 	"os/exec"
 	"testing"
+	"time"
 )
+
+func TestServiceLifecycleAndSampleLoop(t *testing.T) {
+	// Create service, which instantly spins up the sampleLoop goroutine
+	s := New()
+
+	// Wait briefly to allow at least one loop or tick registration if needed,
+	// then call Close to execute the s.stopChan channel selection.
+	time.Sleep(10 * time.Millisecond)
+	s.Close()
+}
+
+func TestGetContextCancelled(t *testing.T) {
+	s := New()
+	defer s.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel instantly before execution
+
+	// Triggers the first ctx.Err() short-circuit check
+	_, err := s.Get(ctx)
+	if err == nil {
+		t.Error("expected error when context is cancelled at entry block")
+	}
+}
 
 func TestTopProcessesCommandFailure(t *testing.T) {
 	orig := commandOutput
 	commandOutput = func(*exec.Cmd) ([]byte, error) { return nil, errors.New("boom") }
 	defer func() { commandOutput = orig }()
 
-	if _, err := New().TopProcesses(context.Background()); err == nil {
+	s := New()
+	defer s.Close()
+
+	if _, err := s.TopProcesses(context.Background()); err == nil {
 		t.Error("TopProcesses should error when command fails")
+	}
+}
+
+func TestWindowsTopProcessesParsing(t *testing.T) {
+	orig := commandOutput
+	defer func() { commandOutput = orig }()
+
+	s := New()
+	defer s.Close()
+
+	t.Run("single json object response", func(t *testing.T) {
+		commandOutput = func(*exec.Cmd) ([]byte, error) {
+			return []byte(`{"Name":"chrome","CPU":12.5,"Mem":104857600}`), nil
+		}
+		procs, err := s.TopProcesses(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(procs) != 1 || procs[0].Name != "chrome" || procs[0].Mem != 100.0 {
+			t.Errorf("unexpected structure output parsing single object: %+v", procs)
+		}
+	})
+
+	t.Run("array json response", func(t *testing.T) {
+		commandOutput = func(*exec.Cmd) ([]byte, error) {
+			return []byte(`[{"Name":"pwsh","CPU":5.0,"Mem":52428800}]`), nil
+		}
+		procs, err := s.TopProcesses(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(procs) != 1 || procs[0].Name != "pwsh" || procs[0].Mem != 50.0 {
+			t.Errorf("unexpected structure output parsing array: %+v", procs)
+		}
+	})
+}
+
+func TestWindowsCleanName(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"explorer.exe", "explorer"},
+		{"TASKMGR.EXE", "TASKMGR"},
+		{"sans-extension", "sans-extension"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			if got := cleanName(tt.in); got != tt.want {
+				t.Errorf("cleanName(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -59,10 +139,10 @@ func TestCleanName(t *testing.T) {
 	}
 }
 
-// TestGet runs the real collectors (mem/battery/uptime/hostname) available on
-// the host and asserts sane values.
 func TestGet(t *testing.T) {
 	s := New()
+	defer s.Close()
+
 	st, err := s.Get(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -85,6 +165,8 @@ func TestGet(t *testing.T) {
 
 func TestTopProcesses(t *testing.T) {
 	s := New()
+	defer s.Close()
+
 	procs, err := s.TopProcesses(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +188,6 @@ func TestSampleCPUPercent(t *testing.T) {
 	}
 }
 
-// numCPUGuard keeps the CPU upper bound generous (aggregate can exceed 100).
 func numCPUGuard() int { return 64 }
 
 func TestUptimeSeconds(t *testing.T) {

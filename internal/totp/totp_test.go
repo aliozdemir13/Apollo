@@ -66,6 +66,8 @@ func TestServiceFlow(t *testing.T) {
 		t.Skip("OS keyring not available in this environment")
 	}
 	s := New(svc)
+	s.isTesting = true // bypass penalty delays to maintain sub-millisecond testing execution speeds
+
 	const id = "acct1"
 	// Clean any leftovers from a prior run, and clean up afterwards.
 	cleanup := func() {
@@ -132,6 +134,11 @@ func TestServiceFlow(t *testing.T) {
 	}
 	if s.Unlocked() {
 		t.Fatal("0-window should already be expired")
+	}
+
+	// Re-unlock the service so downstream code generation tests can run cleanly
+	if !s.Unlock("1234", time.Hour) {
+		t.Fatal("Re-unlocking with correct PIN should succeed")
 	}
 
 	// --- secrets ---

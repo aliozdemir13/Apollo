@@ -1,4 +1,4 @@
-# Retro Widget
+# Apollo Widget [WIP]
 
 A desktop widget styled like a retro LCD gadget. It floats on top of your other
 windows and cycles through several **views** using its physical-looking buttons:
