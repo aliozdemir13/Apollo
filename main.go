@@ -11,6 +11,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
 //go:embed all:frontend/dist
@@ -26,12 +27,12 @@ func main() {
 		Title:     "Apollo",
 		Width:     380,
 		Height:    420,
-		MinWidth:  380,
-		MinHeight: 420,
+		MinWidth:  180,
+		MinHeight: 220,
 		// A widget: no chrome, floats above other windows, transparent corners.
 		Frameless:        true,
 		AlwaysOnTop:      true,
-		DisableResize:    true,
+		DisableResize:    false,
 		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 0},
 		AssetServer:      &assetserver.Options{Assets: assets},
 		OnStartup:        app.startup,
@@ -48,13 +49,22 @@ func main() {
 			WindowIsTranslucent: true,
 			ProgramName:         "Apollo",
 		},
+		Windows: &windows.Options{
+			// WebviewIsTransparent makes the Webview2 control transparent
+			WebviewIsTransparent: true,
+			// WindowIsTranslucent: false avoids the "frosted" (Mica/Acrylic) effect
+			// which matches your Mac comment of wanting it "fully clear".
+			WindowIsTranslucent: true,
+			// Optional: Removes the border/titlebar for a truly "clear" look
+			DisableFramelessWindowDecorations: true,
+		},
 		Bind: []interface{}{
 			app,
 		},
 	})
 
 	if err != nil {
-		println("Error:", err.Error())
+		slog.Error("wails run failed", "err", err)
 	}
 }
 

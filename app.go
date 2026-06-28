@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 
 // mfaUnlockWindow is how long the 2FA screen stays unlocked after a correct PIN
 // before it auto-locks again.
-const mfaUnlockWindow = 5 * time.Minute
+const mfaUnlockWindow = 2 * time.Minute
 
 // App is the single struct bound to the frontend. It owns the config and all
 // service clients and exposes one method per data source.
@@ -37,8 +38,10 @@ type App struct {
 func NewApp() *App {
 	cfg, err := config.Load()
 	if err != nil {
-		// Fall back to in-memory defaults; the UI will surface the error later.
-		fmt.Println("config load error:", err)
+		slog.Error("config load error", "err", err)
+		// so a.cfg is not nil, preventing the crash.
+		// issue happend on the windows build
+		cfg = &config.Config{}
 	}
 
 	a := &App{
@@ -65,6 +68,9 @@ func (a *App) startup(ctx context.Context) {
 
 // domReady fires once the frontend has loaded; re-applies the transparent window
 // backing in case the window wasn't ready at startup.
+// added due to a bug causing the window still being visible on macOS after the app is started,
+// but before the frontend is ready. This caused the window to be visible with a gray background and a shadow,
+// which is not desired.
 func (a *App) domReady(ctx context.Context) {
 	clearNativeChrome()
 }
@@ -72,15 +78,28 @@ func (a *App) domReady(ctx context.Context) {
 // shutdown fires automatically when the user exits Apollo.
 // This executes the kill switch we added to stop the background CPU sampler loop.
 func (a *App) shutdown(ctx context.Context) {
-	a.sys.Close() // this pushes the button that triggers s.stopChan!
+	a.sys.Close() // this pushes the button that triggers s.stopChan, to avoid data leaks and goroutine leaks.
 }
 
 // ---- Settings ---------------------------------------------------------------
+
+// validThemes is the set of widget colour theme ids the frontend can render.
+// Keep in sync with the [data-theme="…"] blocks in frontend/src/style.css.
+var validThemes = map[string]bool{
+	"grey":    true,
+	"purple":  true, // Purple — purple body, gold button
+	"indigo":  true, // Indigo — slate body, indigo button
+	"black":   true, // Black — black body, default buttons
+	"blue":    true, // Blue — blue body, orange button
+	"emerald": true, // Emerald — emerald-green body, gold button
+	"red":     true, // Red — deep-red body, silver button
+}
 
 // Settings is the flat DTO exchanged with the settings screen.
 type Settings struct {
 	LocationName   string   `json:"locationName"`
 	Units          string   `json:"units"`
+	Theme          string   `json:"theme"`
 	GithubToken    string   `json:"githubToken"`
 	GithubRepos    []string `json:"githubRepos"`
 	GithubLogin    string   `json:"githubLogin"`
@@ -97,6 +116,7 @@ func (a *App) GetSettings() Settings {
 	return Settings{
 		LocationName:   a.cfg.Location.Name,
 		Units:          a.cfg.Units,
+		Theme:          a.cfg.Theme,
 		GithubToken:    a.cfg.GitHub.Token,
 		GithubRepos:    a.cfg.GitHub.Repos,
 		GithubLogin:    a.cfg.GitHub.Login,
@@ -124,6 +144,11 @@ func (a *App) SaveSettings(s Settings) error {
 		a.cfg.Units = "fahrenheit"
 	} else {
 		a.cfg.Units = "celsius"
+	}
+	if validThemes[s.Theme] {
+		a.cfg.Theme = s.Theme
+	} else {
+		a.cfg.Theme = "grey"
 	}
 	a.cfg.GitHub.Token = s.GithubToken
 	a.cfg.GitHub.Repos = s.GithubRepos
@@ -164,6 +189,7 @@ func (a *App) GetWeather() (weather.Data, error) {
 			geo, err = a.weather.DetectLocation(a.ctx)
 		}
 		if err != nil {
+			// error logging is done in the weather package level
 			return weather.Data{}, err
 		}
 		lat, lon = geo.Latitude, geo.Longitude
@@ -171,6 +197,8 @@ func (a *App) GetWeather() (weather.Data, error) {
 			name = geo.Name
 		}
 		// Cache so we don't geocode every refresh.
+		// this is mainly for avoiding open source projects used in the weather package
+		// and to not harrass the systems too frequenctly
 		a.cfg.Location.Lat = lat
 		a.cfg.Location.Lon = lon
 		a.cfg.Location.Name = name
@@ -183,11 +211,13 @@ func (a *App) GetWeather() (weather.Data, error) {
 // ---- System stats -----------------------------------------------------------
 
 // GetSystemStats returns a fresh CPU/RAM/battery snapshot.
+// Each platform has its own implementation of sysstats.Service
 func (a *App) GetSystemStats() (sysstats.Stats, error) {
 	return a.sys.Get(a.ctx)
 }
 
 // GetTopProcesses returns the top CPU-consuming processes for the system view.
+// Each platform has its own implementation of sysstats.Service
 func (a *App) GetTopProcesses() ([]sysstats.Process, error) {
 	return a.sys.TopProcesses(a.ctx)
 }
@@ -213,7 +243,7 @@ func (a *App) GetGitHubWorkflows() (github.WorkflowResult, error) {
 
 // GetTeamsUnread returns unread chats from the configured source.
 func (a *App) GetTeamsUnread() (teams.Result, error) {
-	if a.cfg.Teams.Source == "local" {
+	if a.cfg.Teams.Source == "local" { // only functional in macos
 		return a.teams.GetUnreadLocal(a.ctx, a.cfg.Teams.Favorites)
 	}
 	if !a.teams.Configured() {
@@ -234,7 +264,7 @@ func (a *App) TeamsLoggedIn() bool { return a.teams.LoggedIn(a.ctx) }
 // Inside app.go -> TeamsLogin()
 func (a *App) TeamsLogin() {
 	go func() {
-		fmt.Println("[Teams] Starting login flow...")
+		slog.Info("teams login flow started")
 		err := a.teams.Login(a.ctx, func(dc teams.DeviceCode) {
 			// Force lowerCamelCase keys to match your TypeScript/Svelte declarations perfectly
 			payload := map[string]string{
@@ -245,17 +275,17 @@ func (a *App) TeamsLogin() {
 			runtime.EventsEmit(a.ctx, "teams:device_code", payload)
 
 			// Open the browser
+			// TODO: currently there is an issue on the callback to finalize authentication
 			runtime.BrowserOpenURL(a.ctx, dc.VerificationURL)
 		})
 
 		if err != nil {
-			fmt.Println("[Teams] Login loop error:", err)
+			slog.Error("teams login error", "err", err)
 			runtime.EventsEmit(a.ctx, "teams:login_error", err.Error())
 			return
 		}
 
-		// Unblocked!
-		fmt.Println("[Teams] Authentication verified by Microsoft! Transitioning UI...")
+		slog.Info("teams login complete")
 		runtime.EventsEmit(a.ctx, "teams:auth_complete", true)
 	}()
 }
@@ -307,6 +337,9 @@ func (a *App) MFAListAccounts() []config.TotpAccount {
 
 // MFAAddAccount stores a new TOTP account's secret in the keychain and records
 // its metadata. issuer defaults to "Salesforce".
+// IT IS IMPORTANT TO NOTE THAT THIS FUNCTION AIMS CONVENIENCE OVER SECURITY, TREAT ACCORDINGLY.
+// The secret is stored in the OS keychain, which is not encrypted by a user password.
+// If you need to store secrets securely, consider using a dedicated password manager or hardware token.
 func (a *App) MFAAddAccount(label, issuer, secret string) (config.TotpAccount, error) {
 	if issuer == "" {
 		issuer = "Salesforce"
@@ -372,5 +405,11 @@ func (a *App) MFAGetCodes() MFACodes {
 
 // OpenURL opens a link in the user's default browser (used for PR links).
 func (a *App) OpenURL(url string) {
+	// If ctx is nil or Background (common in tests), don't call Wails runtime
+	slog.Info("context type: %T", "ctx", fmt.Sprintf("%T", a.ctx))
+	if a.ctx == nil || fmt.Sprintf("%T", a.ctx) == "context.backgroundCtx" {
+		slog.Info("Skipping BrowserOpenURL in test environment", "url", url)
+		return
+	}
 	runtime.BrowserOpenURL(a.ctx, url)
 }

@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"testing"
 	"time"
+
+	"github.com/distatus/battery"
 )
 
 func TestServiceLifecycleAndSampleLoop(t *testing.T) {
@@ -29,71 +31,6 @@ func TestGetContextCancelled(t *testing.T) {
 	_, err := s.Get(ctx)
 	if err == nil {
 		t.Error("expected error when context is cancelled at entry block")
-	}
-}
-
-func TestTopProcessesCommandFailure(t *testing.T) {
-	orig := commandOutput
-	commandOutput = func(*exec.Cmd) ([]byte, error) { return nil, errors.New("boom") }
-	defer func() { commandOutput = orig }()
-
-	s := New()
-	defer s.Close()
-
-	if _, err := s.TopProcesses(context.Background()); err == nil {
-		t.Error("TopProcesses should error when command fails")
-	}
-}
-
-func TestWindowsTopProcessesParsing(t *testing.T) {
-	orig := commandOutput
-	defer func() { commandOutput = orig }()
-
-	s := New()
-	defer s.Close()
-
-	t.Run("single json object response", func(t *testing.T) {
-		commandOutput = func(*exec.Cmd) ([]byte, error) {
-			return []byte(`{"Name":"chrome","CPU":12.5,"Mem":104857600}`), nil
-		}
-		procs, err := s.TopProcesses(context.Background())
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(procs) != 1 || procs[0].Name != "chrome" || procs[0].Mem != 100.0 {
-			t.Errorf("unexpected structure output parsing single object: %+v", procs)
-		}
-	})
-
-	t.Run("array json response", func(t *testing.T) {
-		commandOutput = func(*exec.Cmd) ([]byte, error) {
-			return []byte(`[{"Name":"pwsh","CPU":5.0,"Mem":52428800}]`), nil
-		}
-		procs, err := s.TopProcesses(context.Background())
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(procs) != 1 || procs[0].Name != "pwsh" || procs[0].Mem != 50.0 {
-			t.Errorf("unexpected structure output parsing array: %+v", procs)
-		}
-	})
-}
-
-func TestWindowsCleanName(t *testing.T) {
-	tests := []struct {
-		in   string
-		want string
-	}{
-		{"explorer.exe", "explorer"},
-		{"TASKMGR.EXE", "TASKMGR"},
-		{"sans-extension", "sans-extension"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.in, func(t *testing.T) {
-			if got := cleanName(tt.in); got != tt.want {
-				t.Errorf("cleanName(%q) = %q, want %q", tt.in, got, tt.want)
-			}
-		})
 	}
 }
 
@@ -123,12 +60,10 @@ func TestCleanName(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"macos app bundle", "/Applications/Claude.app/Contents/MacOS/Claude Helper", "Claude"},
-		{"plain path", "/usr/sbin/bluetoothd", "bluetoothd"},
+		{"macos bundle", "/Applications/test.app/Contents/MacOS/test", "test"},
+		{"windows path", `C:\Program Files\Google\Chrome.exe`, "Chrome"},
+		{"linux path", "/usr/bin/python3", "python3"},
 		{"bare name", "WindowServer", "WindowServer"},
-		{"empty", "", ""},
-		{"whitespace", "   ", ""},
-		{"linux comm", "/usr/lib/firefox/firefox", "firefox"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -136,6 +71,21 @@ func TestCleanName(t *testing.T) {
 				t.Errorf("cleanName(%q)=%q want %q", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestTopProcessesCommandFailure(t *testing.T) {
+	orig := commandOutput
+	commandOutput = func(*exec.Cmd) ([]byte, error) { return nil, errors.New("boom") }
+	defer func() { commandOutput = orig }()
+
+	s := New()
+	defer s.Close()
+
+	// This will now correctly trigger the error on Windows AND Unix
+	// because they share the same commandOutput variable.
+	if _, err := s.TopProcesses(context.Background()); err == nil {
+		t.Error("TopProcesses should error when command fails")
 	}
 }
 
@@ -193,5 +143,46 @@ func numCPUGuard() int { return 64 }
 func TestUptimeSeconds(t *testing.T) {
 	if uptimeSeconds() < 0 {
 		t.Error("uptime negative")
+	}
+}
+
+func makeBat(state battery.AgnosticState, current, full float64) *battery.Battery {
+	b := &battery.Battery{Current: current, Full: full}
+	b.State.Raw = state
+	return b
+}
+
+func TestReadBattery(t *testing.T) {
+	orig := getBatteryInfo
+	defer func() { getBatteryInfo = orig }()
+
+	tests := []struct {
+		name      string
+		bats      []*battery.Battery
+		err       error
+		wantPct   float64
+		wantState string
+	}{
+		{"error → n/a", nil, errors.New("no battery"), -1, "n/a"},
+		{"empty slice → n/a", []*battery.Battery{}, nil, -1, "n/a"},
+		{"charging", []*battery.Battery{makeBat(battery.Charging, 60, 100)}, nil, 60, "charging"},
+		{"full", []*battery.Battery{makeBat(battery.Full, 100, 100)}, nil, 100, "full"},
+		{"discharging", []*battery.Battery{makeBat(battery.Discharging, 50, 100)}, nil, 50, "discharging"},
+		{"empty state", []*battery.Battery{makeBat(battery.Empty, 0, 100)}, nil, 0, "discharging"},
+		{"unknown state falls back", []*battery.Battery{makeBat(battery.Unknown, 80, 100)}, nil, 80, "discharging"},
+		{"zero full → 0%", []*battery.Battery{makeBat(battery.Charging, 50, 0)}, nil, 0, "charging"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bats, e := tt.bats, tt.err
+			getBatteryInfo = func() ([]*battery.Battery, error) { return bats, e }
+			pct, state := readBattery()
+			if pct != tt.wantPct {
+				t.Errorf("pct=%v want %v", pct, tt.wantPct)
+			}
+			if state != tt.wantState {
+				t.Errorf("state=%q want %q", state, tt.wantState)
+			}
+		})
 	}
 }

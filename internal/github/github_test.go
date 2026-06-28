@@ -46,9 +46,9 @@ func router(routes map[string]struct {
 
 func withBase(t *testing.T, url string) {
 	t.Helper()
-	old := apiBase
-	apiBase = url
-	t.Cleanup(func() { apiBase = old })
+	old := ApiBase
+	ApiBase = url
+	t.Cleanup(func() { ApiBase = old })
 }
 
 func TestGetPRs(t *testing.T) {

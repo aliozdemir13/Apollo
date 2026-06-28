@@ -6,6 +6,8 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,10 +17,11 @@ import (
 
 // Service samples system metrics with a controlled lifecycle.
 type Service struct {
-	mu       sync.RWMutex
-	cpuPct   float64
-	hostname string        // Cached to avoid constant system calls
-	stopChan chan struct{} // Controls the background goroutine shutdown
+	mu        sync.RWMutex
+	cpuPct    float64
+	hostname  string        // Cached to avoid constant system calls
+	stopChan  chan struct{} // Controls the background goroutine shutdown
+	closeOnce sync.Once     // unit test panic caused this, to avoid double closure of the stopChan
 }
 
 // commandOutput runs a command and returns stdout. Indirected so tests can
@@ -37,8 +40,12 @@ func New() *Service {
 }
 
 // Close terminates the background monitoring goroutine to avoid goroutine leak
+// closeOnce ensures that the stopChan is closed only once,
+// preventing potential panics from multiple close calls.
 func (s *Service) Close() {
-	close(s.stopChan)
+	s.closeOnce.Do(func() {
+		close(s.stopChan)
+	})
 }
 
 func (s *Service) sampleLoop() {
@@ -115,6 +122,36 @@ func readBattery() (float64, string) {
 	default:
 		return pct, "discharging"
 	}
+}
+
+func cleanName(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+
+	// 1. Convert backslashes to forward slashes so logic works on all OSs
+	path = strings.ReplaceAll(path, "\\", "/")
+
+	// 2. Handle macOS .app bundles before getting the Base name
+	// This works for ".../Foo.app/Contents/MacOS/Foo" -> ".../Foo.app"
+	if i := strings.Index(path, ".app/"); i >= 0 {
+		path = path[:i+4]
+	}
+
+	// 3. Get the last element (e.g., "chrome.exe" or "Foo.app")
+	path = filepath.Base(path)
+
+	// 4. Strip common extensions
+	lower := strings.ToLower(path)
+	if strings.HasSuffix(lower, ".exe") {
+		path = path[:len(path)-4]
+	}
+	if strings.HasSuffix(lower, ".app") {
+		path = path[:len(path)-4]
+	}
+
+	return path
 }
 
 // Fixed to use deterministic, cross-platform standard math

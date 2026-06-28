@@ -16,16 +16,24 @@ import (
 
 const teamsBundleID = "com.microsoft.teams2"
 
+// notifDBPath is overridable in tests so we can point at a temp SQLite file.
+var notifDBPath = func() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, "Library/Group Containers/group.com.apple.usernoted/db2/db"), nil
+}
+
 // readTeamsNotifications reads delivered Teams notifications from the macOS
 // Notification Center database. The file is TCC-protected, so the app must be
 // granted Full Disk Access. Opened read-only + immutable to avoid lock issues
 // while the notification daemon is writing.
 func readTeamsNotifications() ([]Notif, error) {
-	home, err := os.UserHomeDir()
+	dbPath, err := notifDBPath()
 	if err != nil {
 		return nil, err
 	}
-	dbPath := filepath.Join(home, "Library/Group Containers/group.com.apple.usernoted/db2/db")
 	if _, err := os.Stat(dbPath); err != nil {
 		return nil, friendly(err)
 	}

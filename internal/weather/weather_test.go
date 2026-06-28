@@ -90,14 +90,14 @@ func TestGeocode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			old := geocodeBase
-			defer func() { geocodeBase = old }()
+			old := GeocodeBase
+			defer func() { GeocodeBase = old }()
 			if tt.badBase != "" {
-				geocodeBase = tt.badBase
+				GeocodeBase = tt.badBase
 			} else {
 				srv := serve(t, tt.status, tt.body)
 				defer srv.Close()
-				geocodeBase = srv.URL
+				GeocodeBase = srv.URL
 			}
 			got, err := New().Geocode(context.Background(), "x")
 			if (err != nil) != tt.wantErr {
@@ -116,9 +116,9 @@ func TestGetJSONConnError(t *testing.T) {
 	srv := serve(t, 200, `{}`)
 	url := srv.URL
 	srv.Close()
-	old := geocodeBase
-	defer func() { geocodeBase = old }()
-	geocodeBase = url
+	old := GeocodeBase
+	defer func() { GeocodeBase = old }()
+	GeocodeBase = url
 	if _, err := New().Geocode(context.Background(), "x"); err == nil {
 		t.Fatal("expected connection error, got nil")
 	}
@@ -140,14 +140,14 @@ func TestDetectLocation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			old := ipapiURL
-			defer func() { ipapiURL = old }()
+			old := IpapiURL
+			defer func() { IpapiURL = old }()
 			if tt.badBase != "" {
-				ipapiURL = tt.badBase
+				IpapiURL = tt.badBase
 			} else {
 				srv := serve(t, tt.status, tt.body)
 				defer srv.Close()
-				ipapiURL = srv.URL
+				IpapiURL = srv.URL
 			}
 			_, err := New().DetectLocation(context.Background())
 			if (err != nil) != tt.wantErr {
@@ -178,14 +178,14 @@ func TestCurrent(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			old := forecastBase
-			defer func() { forecastBase = old }()
+			old := ForecastBase
+			defer func() { ForecastBase = old }()
 			if tt.badBase != "" {
-				forecastBase = tt.badBase
+				ForecastBase = tt.badBase
 			} else {
 				srv := serve(t, tt.status, tt.body)
 				defer srv.Close()
-				forecastBase = srv.URL
+				ForecastBase = srv.URL
 			}
 			got, err := New().CurrentWeather(context.Background(), 1, 2, tt.units, "Here")
 			if (err != nil) != tt.wantErr {

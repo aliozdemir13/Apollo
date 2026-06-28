@@ -339,6 +339,69 @@ func TestFetchChatsConnError(t *testing.T) {
 	}
 }
 
+func TestGetUnreadWithToken(t *testing.T) {
+	oldToken := getTokenFn
+	oldGraph := graphBase
+	defer func() {
+		getTokenFn = oldToken
+		graphBase = oldGraph
+	}()
+
+	getTokenFn = func(_ *Service, _ context.Context) (string, error) { return "fake-token", nil }
+
+	t.Run("returns unread chats", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(`{"value":[` +
+				`{"topic":"Team A","viewpoint":{"lastMessageReadDateTime":"2026-01-01T00:00:00Z"},"lastMessagePreview":{"createdDateTime":"2026-01-02T00:00:00Z","body":{"content":"hello","contentType":"text"},"from":{"user":{"displayName":"Alice"}}}},` +
+				`{"topic":"Team B","viewpoint":{"lastMessageReadDateTime":"2026-01-03T00:00:00Z"},"lastMessagePreview":{"createdDateTime":"2026-01-02T00:00:00Z","body":{"content":"old","contentType":"text"},"from":{"user":{"displayName":"Bob"}}}}` +
+				`]}`))
+		}))
+		defer srv.Close()
+		graphBase = srv.URL
+
+		res, err := New("cid", "", t.TempDir()+"/c").GetUnread(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.TotalUnread != 1 || res.UnreadChats[0].Name != "Team A" {
+			t.Errorf("unexpected result: %+v", res)
+		}
+	})
+
+	t.Run("name filter applied", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(`{"value":[` +
+				`{"topic":"Alice Chat","viewpoint":{"lastMessageReadDateTime":""},"lastMessagePreview":{"createdDateTime":"2026-01-02T00:00:00Z","body":{"content":"hi","contentType":"text"},"from":{"user":{"displayName":"Alice"}}}},` +
+				`{"topic":"Bob Chat","viewpoint":{"lastMessageReadDateTime":""},"lastMessagePreview":{"createdDateTime":"2026-01-02T00:00:00Z","body":{"content":"hey","contentType":"text"},"from":{"user":{"displayName":"Bob"}}}}` +
+				`]}`))
+		}))
+		defer srv.Close()
+		graphBase = srv.URL
+
+		res, err := New("cid", "", t.TempDir()+"/c").GetUnread(context.Background(), []string{"alice"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.TotalUnread != 1 || res.UnreadChats[0].Name != "Alice Chat" {
+			t.Errorf("unexpected filter result: %+v", res)
+		}
+	})
+
+	t.Run("graph error propagates", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(500)
+		}))
+		defer srv.Close()
+		graphBase = srv.URL
+
+		if _, err := New("cid", "", t.TempDir()+"/c").GetUnread(context.Background(), nil); err == nil {
+			t.Fatal("want error from graph")
+		}
+	})
+}
+
 func TestGetUnreadLocal(t *testing.T) {
 	old := readNotifs
 	defer func() { readNotifs = old }()

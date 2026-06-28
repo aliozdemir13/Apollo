@@ -14,20 +14,25 @@ import (
 	"time"
 )
 
+// Cache is added to respect the API provider's rate limits and avoid unnecessary calls.
 // Service performs weather lookups.
 type Service struct {
-	client *http.Client
+	client      *http.Client
+	cache       Data
+	cacheExpiry time.Time
 }
 
 // New returns a Service with a sane HTTP timeout.
 func New() *Service {
-	return &Service{client: &http.Client{Timeout: 12 * time.Second}}
+	return &Service{client: &http.Client{Timeout: 15 * time.Second}}
 }
 
+// exposed constants for the API endpoints, so they can be overridden in tests
+// for mock servers. The default values are the real endpoints.
 var (
-	geocodeBase  = "https://geocoding-api.open-meteo.com/v1/search"
-	ipapiURL     = "https://ipapi.co/json/"
-	forecastBase = "https://api.open-meteo.com/v1/forecast"
+	GeocodeBase  = "https://geocoding-api.open-meteo.com/v1/search"
+	IpapiURL     = "https://ipapi.co/json/"
+	ForecastBase = "https://api.open-meteo.com/v1/forecast"
 )
 
 // Geocode resolves a place name to coordinates via Open-Meteo's geocoder.
@@ -37,7 +42,7 @@ func (s *Service) Geocode(ctx context.Context, name string) (GeoResult, error) {
 	q.Set("language", "en")
 	q.Set("format", "json")
 	q.Set("name", name)
-	u := geocodeBase + "?" + q.Encode()
+	u := GeocodeBase + "?" + q.Encode()
 
 	slog.Info("API call", "url", u)
 
@@ -58,15 +63,8 @@ func (s *Service) Geocode(ctx context.Context, name string) (GeoResult, error) {
 // DetectLocation guesses the user's location from their IP address. Used only
 // when no location has been configured.
 func (s *Service) DetectLocation(ctx context.Context) (GeoResult, error) {
-	var out struct {
-		City      string  `json:"city"`
-		Region    string  `json:"region"`
-		Country   string  `json:"country_name"`
-		Latitude  float64 `json:"latitude"`
-		Longitude float64 `json:"longitude"`
-		Error     bool    `json:"error"`
-	}
-	if err := s.getJSON(ctx, ipapiURL, &out); err != nil {
+	var out DetectLocationResult
+	if err := s.getJSON(ctx, IpapiURL, &out); err != nil {
 		// error for location definition via ip address logged in the getJSON
 		return GeoResult{}, err
 	}
@@ -92,13 +90,17 @@ func (s *Service) CurrentWeather(ctx context.Context, lat, lon float64, units, l
 		unitLabel = "F"
 	}
 
+	if time.Now().Before(s.cacheExpiry) && s.cache.Location == locationName {
+		return s.cache, nil
+	}
+
 	q := url.Values{}
 	q.Set("latitude", fmt.Sprintf("%.4f", lat))
 	q.Set("longitude", fmt.Sprintf("%.4f", lon))
 	q.Set("current", "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m")
 	q.Set("temperature_unit", tempUnit)
 	q.Set("wind_speed_unit", "kmh")
-	u := forecastBase + "?" + q.Encode()
+	u := ForecastBase + "?" + q.Encode()
 
 	slog.Info("API call", "url", u)
 
@@ -109,7 +111,7 @@ func (s *Service) CurrentWeather(ctx context.Context, lat, lon float64, units, l
 	}
 
 	label, desc := DescribeCode(out.Current.WeatherCode)
-	return Data{
+	data := Data{
 		Location:    locationName,
 		Label:       label,
 		Description: desc,
@@ -121,7 +123,11 @@ func (s *Service) CurrentWeather(ctx context.Context, lat, lon float64, units, l
 		Code:        out.Current.WeatherCode,
 		IsDay:       out.Current.IsDay == 1,
 		UpdatedAt:   time.Now().Format(time.RFC3339),
-	}, nil
+	}
+
+	s.cache = data
+	s.cacheExpiry = time.Now().Add(15 * time.Minute) // cache for 15 minutes, decided 15 mins is a good balance between API consumption and accuracy
+	return data, nil
 }
 
 // single API handler for the app
@@ -131,7 +137,7 @@ func (s *Service) getJSON(ctx context.Context, u string, v interface{}) error {
 		slog.Error("Request composition failed", "url", u, "error", err)
 		return err
 	}
-	req.Header.Set("User-Agent", "apollo-widget/1.0") // to avoid auto blocked by system provider
+	req.Header.Set("User-Agent", "ApolloWidget/1.0 (+https://github.com/aliozdemir13/Apollo)") // to avoid auto blocked by system provider
 	resp, err := s.client.Do(req)
 	if err != nil {
 		slog.Error("API call failed", "url", u, "error", err)

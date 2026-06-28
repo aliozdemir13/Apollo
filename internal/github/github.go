@@ -1,5 +1,7 @@
-// Package github fetches open pull requests from a set of selected repos using
+// package github fetches open pull requests from a set of selected repos using
 // the GitHub REST API and a personal access token.
+// security of the personal access token is the responsibility of the caller,
+// and it should be stored securely (e.g., in a keyring).
 package github
 
 import (
@@ -27,8 +29,8 @@ func New() *Service {
 	return &Service{client: &http.Client{Timeout: 15 * time.Second}}
 }
 
-// apiBase is the GitHub API root, overridable in tests.
-var apiBase = "https://api.github.com"
+// ApiBase is the GitHub API root, overridable in tests.
+var ApiBase = "https://api.github.com"
 
 // GetPRs returns open PRs across the given repos. If login is non-empty, only
 // PRs authored by that user are kept.
@@ -79,7 +81,7 @@ func (s *Service) GetPRs(ctx context.Context, token string, repos []string, logi
 		})
 	}
 
-	_ = g.Wait() // All fetches executed in parallel!
+	_ = g.Wait() // All fetches executed in parallel using goroutines to save execcution time
 
 	// Most recently updated first
 	sort.Slice(res.PRs, func(i, j int) bool {
@@ -94,7 +96,7 @@ func (s *Service) repoPRs(ctx context.Context, token, repo string) ([]ApiPR, err
 	q.Set("per_page", "50")
 	q.Set("sort", "updated")
 	q.Set("direction", "desc")
-	u := fmt.Sprintf("%s/repos/%s/pulls?", apiBase, repo) + q.Encode()
+	u := fmt.Sprintf("%s/repos/%s/pulls?", ApiBase, repo) + q.Encode()
 
 	var prs []ApiPR
 	if err := s.apiGet(ctx, token, u, &prs); err != nil {
@@ -149,21 +151,10 @@ func (s *Service) GetReviewRequests(ctx context.Context, token string, repos []s
 			q += " repo:" + repo
 		}
 	}
-	u := apiBase + "/search/issues?per_page=50&q=" + url.QueryEscape(q)
+	u := ApiBase + "/search/issues?per_page=50&q=" + url.QueryEscape(q)
 
-	var out struct {
-		Items []struct {
-			Number        int    `json:"number"`
-			Title         string `json:"title"`
-			HTMLURL       string `json:"html_url"`
-			UpdatedAt     string `json:"updated_at"`
-			Draft         bool   `json:"draft"`
-			RepositoryURL string `json:"repository_url"`
-			User          struct {
-				Login string `json:"login"`
-			} `json:"user"`
-		} `json:"items"`
-	}
+	var out ReviewRequestsResult
+
 	if err := s.apiGet(ctx, token, u, &out); err != nil {
 		return res, err
 	}
@@ -204,7 +195,7 @@ func (s *Service) GetWorkflowRuns(ctx context.Context, token string, repos []str
 		if repo == "" {
 			continue
 		}
-		u := fmt.Sprintf("%s/repos/%s/actions/runs?per_page=1", apiBase, repo)
+		u := fmt.Sprintf("%s/repos/%s/actions/runs?per_page=1", ApiBase, repo)
 		var out struct {
 			WorkflowRuns []struct {
 				Name       string `json:"name"`

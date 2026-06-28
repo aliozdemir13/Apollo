@@ -1,68 +1,78 @@
 //go:build windows
 
+// package sysstats provides system statistics for the Apollo widget,
+// including CPU and memory usage, and top processes. This file contains Windows-specific implementations.
+// build script and cross platform support lead to separate OS level info gathering.
+// This file is for Windows, other OSes have their own implementations.
 package sysstats
 
 import (
 	"context"
-	"encoding/json"
-	"os/exec"
-	"strings"
+	"sort"
+
+	"github.com/shirou/gopsutil/v3/process"
 )
 
-// WindowsProcess maps the output string from our PowerShell pipeline
-type WindowsProcess struct {
-	Name string  `json:"Name"`
-	CPU  float64 `json:"CPU"`
-	Mem  float64 `json:"Mem"`
-}
-
-// TopProcesses (AI supported logic) executes a lightweight PowerShell script to aggregate and extract
-// process stats without CGO.
 func (s *Service) TopProcesses(ctx context.Context) ([]Process, error) {
-	// This script grabs processes, groups them by name to combine sub-tasks,
-	// calculates total CPU, and formats it directly into JSON.
-	psCmd := `Get-Process | Where-Object {$_.CPU -gt 0} | ` +
-		`Group-Object Name | ForEach-Object { ` +
-		`[PSCustomObject]@{ Name = $_.Name; CPU = ($_.Group | Measure-Object CPU -Sum).Sum; Mem = ($_.Group | Measure-Object WorkingSet -Sum).Sum } ` +
-		`} | Sort-Object CPU -Descending | Select-Object -First 5 | ConvertTo-Json`
-
-	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-Command", psCmd)
-	out, err := cmd.Output()
+	// 1. Get all running processes
+	allProcs, err := process.ProcessesWithContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var rawProcs []WindowsProcess
-	// Handle single object vs array JSON edge-cases from PowerShell
-	if len(out) > 0 && out[0] == '{' {
-		var single WindowsProcess
-		if err := json.Unmarshal(out, &single); err == nil {
-			rawProcs = append(rawProcs, single)
+	type procSnap struct {
+		Name string
+		CPU  float64
+		Mem  float64
+	}
+	var snaps []procSnap
+
+	for _, p := range allProcs {
+		// Get CPU percent.
+		// Note: The first time this is called on a process object, it returns 0.
+		// For a widget, you might want to cache process objects to get delta-based percentages,
+		// but Percent(0) usually works for a "snapshot" of current activity.
+		cpu, err := p.CPUPercentWithContext(ctx)
+		if err != nil || cpu <= 0 {
+			continue
 		}
-	} else {
-		_ = json.Unmarshal(out, &rawProcs)
+
+		name, err := p.NameWithContext(ctx)
+		if err != nil {
+			continue
+		}
+
+		memInfo, err := p.MemoryInfoWithContext(ctx)
+		if err != nil {
+			continue
+		}
+
+		snaps = append(snaps, procSnap{
+			Name: name,
+			CPU:  cpu,
+			Mem:  float64(memInfo.RSS) / (1024 * 1024), // Convert to MB
+		})
 	}
 
-	procs := make([]Process, 0, len(rawProcs))
-	for _, rp := range rawProcs {
-		// Convert WorkingSet bytes to a human-readable Megabyte value
-		memMB := rp.Mem / (1024 * 1024)
+	// 2. Sort by CPU descending
+	sort.Slice(snaps, func(i, j int) bool {
+		return snaps[i].CPU > snaps[j].CPU
+	})
+
+	// 3. Take Top 5 and format
+	limit := 5
+	if len(snaps) < 5 {
+		limit = len(snaps)
+	}
+
+	procs := make([]Process, 0, limit)
+	for i := 0; i < limit; i++ {
 		procs = append(procs, Process{
-			Name: rp.Name,
-			CPU:  round1(rp.CPU),
-			Mem:  round1(memMB),
+			Name: cleanName(snaps[i].Name),
+			CPU:  round1(snaps[i].CPU),
+			Mem:  round1(snaps[i].Mem),
 		})
 	}
 
 	return procs, nil
-}
-
-// added for cross-platform testing issue resolution. not really needed for windows
-func cleanName(name string) string {
-	// Example Windows-specific cleaning: strip out trailing .exe case-insensitively
-	lower := strings.ToLower(name)
-	if strings.HasSuffix(lower, ".exe") {
-		return name[:len(name)-4]
-	}
-	return name
 }

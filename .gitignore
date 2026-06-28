@@ -133,7 +133,8 @@ go.work
 go.work.sum
 
 # Wails auto-generated platform folders and compiled binaries
-build/bin/Apollo-Widget
-build/windows/
-build/darwin/
-build/linux/
+build/bin
+build/windows
+build/linux
+build/darwin
+.DS_Store
