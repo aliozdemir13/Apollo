@@ -87,7 +87,24 @@
   // Local editable copy.
   let s = JSON.parse(JSON.stringify($settings || {}));
   s.units = s.units || "celsius";
+  s.theme = s.theme || "grey";
   s.teamsSource = s.teamsSource || "graph";
+
+  const THEMES = [
+    { id: "grey", label: "Classic" },
+    { id: "purple", label: "Purple" },
+    { id: "indigo", label: "Indigo" },
+    { id: "black", label: "Black" },
+    { id: "blue", label: "Blue" },
+    { id: "emerald", label: "Emerald" },
+    { id: "red", label: "Red" },
+  ];
+
+  // Live-preview the theme as the user picks it; reverts on Cancel since the
+  // store (and thus the persisted value) only changes on Save.
+  $: if (typeof document !== "undefined" && s.theme) {
+    document.documentElement.dataset.theme = s.theme;
+  }
   s.views = s.views?.length ? s.views : [...ALL_VIEWS];
 
   let reposText = (s.githubRepos || []).join("\n");
@@ -101,6 +118,15 @@
       // keep canonical order
       s.views = ALL_VIEWS.filter((x) => x === v || s.views.includes(x));
     }
+  }
+
+  // Close without saving: undo the live theme preview by restoring the value
+  // currently held in the store.
+  function cancel() {
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.theme = $settings?.theme || "grey";
+    }
+    settingsOpen.set(false);
   }
 
   async function onSave() {
@@ -126,7 +152,7 @@
 <div class="sheet">
   <div class="bar">
     <span class="title lcd-mono">SETTINGS</span>
-    <button class="x" on:click={() => settingsOpen.set(false)}>✕</button>
+    <button class="x" on:click={cancel}>✕</button>
   </div>
 
   <div class="scroll">
@@ -141,6 +167,18 @@
           <option value="fahrenheit">Fahrenheit °F</option>
         </select>
       </label>
+    </section>
+
+    <section>
+      <h3>Appearance</h3>
+      <label>Theme
+        <select bind:value={s.theme}>
+          {#each THEMES as t}
+            <option value={t.id}>{t.label}</option>
+          {/each}
+        </select>
+      </label>
+      <div class="note">Changes the device colour. Previewed live; applied on Save.</div>
     </section>
 
     <section>
@@ -245,7 +283,7 @@
   </div>
 
   <div class="footer">
-    <button class="cancel" on:click={() => settingsOpen.set(false)}>Cancel</button>
+    <button class="cancel" on:click={cancel}>Cancel</button>
     <button class="save" on:click={onSave} disabled={saving}>
       {saving ? "Saving…" : "Save"}
     </button>
@@ -368,8 +406,8 @@
   }
   .mini.add {
     align-self: flex-start;
-    background: rgba(224, 113, 47, 0.85);
-    color: #1a1106;
+    background: rgba(var(--accent-rgb), 0.85);
+    color: var(--accent-ink);
   }
   .note {
     font-size: 9px;
@@ -423,7 +461,7 @@
   }
   .save {
     background: var(--accent);
-    color: #1a1106;
+    color: var(--accent-ink);
     font-weight: 600;
   }
   .save:disabled {

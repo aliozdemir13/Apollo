@@ -1,8 +1,12 @@
 /* ---- Retro device widget: global styles ---------------------------------- */
 
-:root {
+:root,
+[data-theme="grey"] {
   --accent: #e0712f;       /* orange */
+  --accent-hi: #e8814a;    /* round-button top highlight */
   --accent-dim: #b1561f;
+  --accent-rgb: 224, 113, 47; /* for glows built with rgba() */
+  --accent-ink: #1a1106;   /* text/icon colour that sits on the accent */
   --lcd-bg: #0a0a0a;
   --lcd-glow: #15130f;
   --lcd-text: #ece9df;
@@ -14,6 +18,79 @@
   --btn-face-lo: #c7c4bb;
   --seam: rgba(0, 0, 0, 0.28);
   --device-radius: 22px;
+}
+
+/* ---- Colour themes ------------------------------------------------------- */
+/* Each block overrides the device body and accent variables. The LCD screen,
+   small grey control buttons, and on-screen typography stay constant so every
+   view keeps its retro readability. Keep these ids in sync with validThemes
+   in app.go. */
+
+/* Purple: purple body, gold action button. */
+[data-theme="purple"] {
+  --body-hi: #7b4fb0;
+  --body-lo: #552583;
+  --body-edge: #3f1b63;
+  --accent: #fdb927;
+  --accent-hi: #ffd45e;
+  --accent-dim: #c8901a;
+  --accent-rgb: 253, 185, 39;
+  --accent-ink: #2a1d00;
+}
+
+/* Indigo: cool slate body, indigo action button. */
+[data-theme="indigo"] {
+  --body-hi: #b9bcc7;
+  --body-lo: #888d9c;
+  --body-edge: #6b6f7d;
+  --accent: #5b5bd6;
+  --accent-hi: #7d7dec;
+  --accent-dim: #4242b0;
+  --accent-rgb: 91, 91, 214;
+  --accent-ink: #eef0ff;
+}
+
+/* Black: near-black body; buttons and accent stay as the default orange. */
+[data-theme="black"] {
+  --body-hi: #2b2b2b;
+  --body-lo: #141414;
+  --body-edge: #000000;
+}
+
+/* Blue: blue body, orange action button. */
+[data-theme="blue"] {
+  --body-hi: #2a8fd6;
+  --body-lo: #006bb6;
+  --body-edge: #004e85;
+  --accent: #f58426;
+  --accent-hi: #ff9e4d;
+  --accent-dim: #c8631a;
+  --accent-rgb: 245, 132, 38;
+  --accent-ink: #2a1300;
+}
+
+/* Emerald: emerald-green body, gold action button. */
+[data-theme="emerald"] {
+  --body-hi: #2e9e5b;
+  --body-lo: #1b6b3a;
+  --body-edge: #114a28;
+  --accent: #fdb927;
+  --accent-hi: #ffd45e;
+  --accent-dim: #c8901a;
+  --accent-rgb: 253, 185, 39;
+  --accent-ink: #163a23;
+}
+
+/* Red: deep-red body, warm orange action button. */
+[data-theme="red"] {
+  --body-hi: #e23b43;
+  --body-lo: #b81f26;
+  --body-edge: #8a151b;
+  --accent: #545252;
+  --accent-hi: #a9a2a2;
+  --accent-dim: #49413d;
+  --accent-rgb: 224, 113, 47;
+  --accent-ink: #2a1106;
 }
 
 * {
@@ -55,3 +132,315 @@ button {
   background: none;
   cursor: pointer;
 }
+
+/* app style */
+.stage {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* The gadget body */
+  .device {
+    position: relative;
+    width: 340px;
+    height: 372px;
+    border-radius: var(--device-radius);
+    padding: 14px;
+    background: linear-gradient(160deg, var(--body-hi) 0%, var(--body-lo) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.5),
+      inset 0 -2px 6px rgba(0, 0, 0, 0.25),
+      0 18px 40px rgba(0, 0, 0, 0.55),
+      0 2px 4px rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--body-edge);
+    --wails-draggable: drag;
+  }
+
+  /* bottom-right group: handle + settings/power buttons */
+  .cbottom {
+    margin-top: auto;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  /* match the 56px width of the rocker / orange button so the buttons line up */
+  .toolrow {
+    width: 56px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .dbtn {
+    position: relative;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, var(--btn-face-hi), var(--btn-face-lo));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.85),
+      0 1px 2px rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    --wails-draggable: no-drag;
+  }
+  .dbtn:active {
+    transform: translateY(0.5px);
+  }
+  .dbtn svg {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: #3a3833;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* power button: looks like an orange light shining while the app is on */
+  .dbtn.power {
+    background:
+      radial-gradient(circle at 50% 42%, rgba(var(--accent-rgb), 0.5), rgba(var(--accent-rgb), 0) 70%),
+      linear-gradient(180deg, var(--btn-face-hi), var(--btn-face-lo));
+    animation: powerGlow 2.6s ease-in-out infinite;
+  }
+  .dbtn.power svg {
+    stroke: var(--accent);
+    position: relative;
+    z-index: 1;
+  }
+  .dbtn.power .led {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  @keyframes powerGlow {
+    0%,
+    100% {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.85),
+        0 1px 2px rgba(0, 0, 0, 0.35),
+        0 0 5px 0.5px rgba(var(--accent-rgb), 0.45);
+    }
+    50% {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.85),
+        0 1px 2px rgba(0, 0, 0, 0.35),
+        0 0 10px 2px rgba(var(--accent-rgb), 0.85);
+    }
+  }
+
+  .layout {
+    height: 100%;
+    display: flex;
+    gap: 12px;
+  }
+
+  /* LCD */
+  .screen {
+    flex: 1;
+    background: radial-gradient(120% 120% at 30% 20%, var(--lcd-glow), var(--lcd-bg) 70%);
+    border-radius: 12px;
+    box-shadow:
+      inset 0 2px 8px rgba(0, 0, 0, 0.9),
+      inset 0 0 0 1px rgba(0, 0, 0, 0.6);
+    padding: 14px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    --wails-draggable: no-drag;
+    overflow: hidden;
+  }
+  .screen-top {
+    display: flex;
+    justify-content: center;
+    padding-top: 2px;
+  }
+  .screen-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .screen-foot {
+    display: flex;
+    justify-content: center;
+    padding-bottom: 2px;
+  }
+  .pill {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--lcd-text);
+    border: 1px solid rgba(236, 233, 223, 0.5);
+    border-radius: 12px;
+    padding: 4px 14px;
+  }
+  .pill .ck {
+    color: var(--accent);
+  }
+
+  /* Controls column */
+  .controls {
+    width: 74px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    --wails-draggable: drag;
+  }
+  .checker {
+    align-self: flex-end;
+    display: grid;
+    grid-template-columns: repeat(3, 4px);
+    grid-auto-rows: 4px;
+    gap: 1px;
+    margin-bottom: 14px;
+  }
+  .checker span {
+    background: rgba(0, 0, 0, 0.25);
+  }
+  .checker span.on {
+    background: var(--accent);
+  }
+
+  .rocker {
+    width: 56px;
+    border-radius: 28px;
+    background: linear-gradient(180deg, var(--btn-face-hi), var(--btn-face-lo));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.8),
+      0 2px 4px rgba(0, 0, 0, 0.35);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    --wails-draggable: no-drag;
+  }
+  .rk {
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .rk:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .rk:active {
+    background: rgba(0, 0, 0, 0.12);
+  }
+  .rk-divider {
+    height: 1px;
+    background: rgba(0, 0, 0, 0.18);
+  }
+  .rk svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: #3a3833;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* horizontal rocker: in-app screen navigation */
+  .hrocker {
+    position: relative;
+    margin-top: 12px;
+    width: 56px;
+    height: 26px;
+    border-radius: 13px;
+    background: linear-gradient(180deg, var(--btn-face-hi), var(--btn-face-lo));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.8),
+      0 2px 4px rgba(0, 0, 0, 0.35);
+    display: flex;
+    overflow: hidden;
+    --wails-draggable: no-drag;
+  }
+  .hrocker.dim {
+    opacity: 0.5;
+  }
+  /* exactly equal halves (avoids subpixel rounding from a 1px flex divider) */
+  .hk {
+    flex: 0 0 50%;
+    width: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .hk:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .hk:active:not(:disabled) {
+    background: rgba(0, 0, 0, 0.12);
+  }
+  .hk:disabled {
+    cursor: default;
+  }
+  /* divider overlaid on the centre seam so both buttons stay identical */
+  .hk-divider {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    transform: translateX(-0.5px);
+    background: rgba(0, 0, 0, 0.18);
+  }
+  .hk svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: #3a3833;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .check {
+    margin-top: 14px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: radial-gradient(120% 120% at 35% 25%, var(--accent-hi), var(--accent) 55%, var(--accent-dim));
+    box-shadow:
+      inset 0 2px 2px rgba(255, 255, 255, 0.45),
+      inset 0 -3px 6px rgba(0, 0, 0, 0.3),
+      0 3px 6px rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    --wails-draggable: no-drag;
+  }
+  .check:active {
+    transform: translateY(1px);
+  }
+  .check svg {
+    width: 28px;
+    height: 28px;
+    fill: none;
+    stroke: #fff;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .check svg.lock {
+    width: 24px;
+    height: 24px;
+    stroke-width: 2.2;
+  }
+  .check svg.refresh {
+    width: 24px;
+    height: 24px;
+    stroke-width: 1.8;
+  }
+
+  .master {
+    font-size: 8.5px;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    color: rgba(0, 0, 0, 0.5);
+  }

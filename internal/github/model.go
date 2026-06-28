@@ -46,3 +46,17 @@ type WorkflowResult struct {
 	Runs   []WorkflowRun `json:"runs"`
 	Errors []string      `json:"errors"`
 }
+
+type ReviewRequestsResult struct {
+	Items []struct {
+		Number        int    `json:"number"`
+		Title         string `json:"title"`
+		HTMLURL       string `json:"html_url"`
+		UpdatedAt     string `json:"updated_at"`
+		Draft         bool   `json:"draft"`
+		RepositoryURL string `json:"repository_url"`
+		User          struct {
+			Login string `json:"login"`
+		} `json:"user"`
+	} `json:"items"`
+}

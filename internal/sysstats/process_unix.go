@@ -1,11 +1,14 @@
 //go:build !windows
 
+// package sysstats provides system statistics for the Apollo widget,
+// including CPU and memory usage, and top processes. This file contains Unix-specific implementations.
+// build script and cross platform support lead to separate OS level info gathering.
+// This file is for Unix (shared for MacOS and Linux), other OSes have their own implementations.
 package sysstats
 
 import (
 	"context"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -24,7 +27,7 @@ func (s *Service) TopProcesses(ctx context.Context) ([]Process, error) {
 		cmd = exec.CommandContext(ctx, "ps", "-eo", "pcpu=,pmem=,comm=", "--sort=-pcpu")
 	}
 
-	out, err := cmd.Output()
+	out, err := commandOutput(cmd)
 	if err != nil {
 		return nil, err
 	}
@@ -65,18 +68,4 @@ func (s *Service) TopProcesses(ctx context.Context) ([]Process, error) {
 		procs = procs[:5]
 	}
 	return procs, nil
-}
-
-// cleanName turns a full command path into a friendly app name.
-func cleanName(comm string) string {
-	comm = strings.TrimSpace(comm)
-	if comm == "" {
-		return ""
-	}
-	// macOS bundles: ".../Foo.app/Contents/MacOS/Foo" -> "Foo".
-	if i := strings.Index(comm, ".app/"); i >= 0 {
-		app := comm[:i]
-		return filepath.Base(app)
-	}
-	return filepath.Base(comm)
 }

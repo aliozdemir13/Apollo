@@ -5,7 +5,7 @@
 // disk so the user only signs in once.
 //
 // Note on "favorites": Microsoft Graph does not expose the Teams "favorite"
-// flag for chats. We approximate the user's intent by surfacing every chat that
+// flag for chats. Code approximate the user's intent by surfacing every chat that
 // has an unread message (a newer message than the last one the user read), and
 // optionally filtering to a configured allow-list of chat names.
 package teams
@@ -107,11 +107,16 @@ func (s *Service) LoggedIn(ctx context.Context) bool {
 	return err == nil
 }
 
+// getTokenFn is indirected so tests can inject a fake token without a real MSAL flow.
+var getTokenFn = func(s *Service, ctx context.Context) (string, error) {
+	return s.silentToken(ctx)
+}
+
 // GetUnread fetches chats with unread messages. nameFilter, if non-empty, keeps
 // only chats whose name contains one of the given substrings (case-insensitive)
 // — used to emulate a "favorites" allow-list.
 func (s *Service) GetUnread(ctx context.Context, nameFilter []string) (Result, error) {
-	token, err := s.silentToken(ctx)
+	token, err := getTokenFn(s, ctx)
 	if err != nil {
 		return Result{NeedsLogin: true}, nil
 	}

@@ -1,5 +1,9 @@
 //go:build linux
 
+// package sysstats provides system statistics for the Apollo widget,
+// including CPU and memory usage, and top processes. This file contains Linux-specific implementations.
+// build script and cross platform support lead to separate OS level info gathering.
+// This file is for Linux, other OSes have their own implementations.
 package sysstats
 
 import (
@@ -8,6 +12,8 @@ import (
 	"strings"
 	"time"
 )
+
+var readFile = os.ReadFile
 
 // sampleCPUPercent (AI supported logic) reads /proc/stat twice and computes the busy fraction over a
 // short window. No cgo.

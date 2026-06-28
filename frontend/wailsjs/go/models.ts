@@ -217,6 +217,7 @@ export namespace main {
 	export class Settings {
 	    locationName: string;
 	    units: string;
+	    theme: string;
 	    githubToken: string;
 	    githubRepos: string[];
 	    githubLogin: string;
@@ -235,6 +236,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.locationName = source["locationName"];
 	        this.units = source["units"];
+	        this.theme = source["theme"];
 	        this.githubToken = source["githubToken"];
 	        this.githubRepos = source["githubRepos"];
 	        this.githubLogin = source["githubLogin"];

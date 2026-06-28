@@ -6,6 +6,22 @@ import (
 	"testing"
 )
 
+// Helper to force the config directory to a temp folder for the duration of the test
+func setupTestConfig(t *testing.T) string {
+	t.Helper()
+	tmp := t.TempDir()
+
+	// Save the original and restore after test
+	old := UserConfigDir
+	t.Cleanup(func() { UserConfigDir = old })
+
+	// Override the global variable for this test
+	UserConfigDir = func() (string, error) {
+		return tmp, nil
+	}
+	return tmp
+}
+
 func TestContains(t *testing.T) {
 	tests := []struct {
 		list []string
@@ -41,7 +57,7 @@ func writeConfig(t *testing.T, json string) string {
 }
 
 func TestLoadFreshCreatesDefaults(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setupTestConfig(t)
 	c, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +78,7 @@ func TestLoadFreshCreatesDefaults(t *testing.T) {
 }
 
 func TestLoadSaveRoundTrip(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setupTestConfig(t)
 	c, _ := Load()
 	c.Location.Name = "Berlin"
 	c.Units = "fahrenheit"
@@ -80,7 +96,7 @@ func TestLoadSaveRoundTrip(t *testing.T) {
 }
 
 func TestLoadMigratesNewViews(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setupTestConfig(t)
 	// Old config predating the "totp" view, with no seenViews.
 	writeConfig(t, `{"units":"celsius","views":["clock","weather"]}`)
 	c, err := Load()
@@ -98,7 +114,7 @@ func TestLoadMigratesNewViews(t *testing.T) {
 }
 
 func TestLoadEmptyViewsAndUnitsDefaults(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setupTestConfig(t)
 	writeConfig(t, `{"views":[],"units":"","seenViews":["clock","weather","system","github","teams","totp"]}`)
 	c, err := Load()
 	if err != nil {
@@ -113,7 +129,7 @@ func TestLoadEmptyViewsAndUnitsDefaults(t *testing.T) {
 }
 
 func TestLoadInvalidJSON(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setupTestConfig(t)
 	writeConfig(t, `{not valid json`)
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error for invalid JSON")
@@ -121,7 +137,7 @@ func TestLoadInvalidJSON(t *testing.T) {
 }
 
 func TestDir(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setupTestConfig(t)
 	dir, err := Dir()
 	if err != nil {
 		t.Fatal(err)
@@ -132,12 +148,39 @@ func TestDir(t *testing.T) {
 }
 
 func TestDirAndLoadErrorWhenNoHome(t *testing.T) {
-	t.Setenv("HOME", "") // os.UserConfigDir errors without $HOME on unix
+	// Save and restore
+	old := UserConfigDir
+	t.Cleanup(func() { UserConfigDir = old })
+
+	// Explicitly force an error from the config dir lookup
+	UserConfigDir = func() (string, error) {
+		return "", os.ErrNotExist
+	}
+
 	if _, err := Dir(); err == nil {
-		t.Error("Dir should error without HOME")
+		t.Error("Dir should error when UserConfigDir returns an error")
 	}
 	if _, err := Load(); err == nil {
-		t.Error("Load should error without HOME")
+		t.Error("Load should error when UserConfigDir returns an error")
+	}
+}
+
+func TestDirMkdirError(t *testing.T) {
+	old := UserConfigDir
+	t.Cleanup(func() { UserConfigDir = old })
+
+	// Create a file where a directory should be to force a MkdirAll failure
+	tmp := t.TempDir()
+	blockedPath := filepath.Join(tmp, "blocked")
+	os.WriteFile(blockedPath, []byte("i am a file"), 0644)
+
+	// Mock UserConfigDir to return a path that cannot have subdirectories created
+	UserConfigDir = func() (string, error) {
+		return blockedPath, nil
+	}
+
+	if _, err := Dir(); err == nil {
+		t.Error("Dir should error when it cannot create the Apollo-Widget subdirectory")
 	}
 }
 
@@ -146,18 +189,6 @@ func TestSaveWriteError(t *testing.T) {
 	c := defaults("/no/such/dir/Apollo-Widget/config.json")
 	if err := c.Save(); err == nil {
 		t.Error("Save should error writing to a missing directory")
-	}
-}
-
-func TestDirMkdirError(t *testing.T) {
-	// HOME points at a regular file, so MkdirAll under it fails (not a directory).
-	f := filepath.Join(t.TempDir(), "homefile")
-	if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HOME", f)
-	if _, err := Dir(); err == nil {
-		t.Error("Dir should error when HOME is a file")
 	}
 }
 
@@ -175,7 +206,7 @@ func TestSaveRenameError(t *testing.T) {
 }
 
 func TestLoadReadError(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setupTestConfig(t)
 	dir, _ := Dir()
 	// Make config.json a directory so ReadFile fails with a non-NotExist error.
 	if err := os.Mkdir(filepath.Join(dir, "config.json"), 0o755); err != nil {

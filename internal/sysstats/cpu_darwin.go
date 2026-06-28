@@ -1,5 +1,9 @@
 //go:build darwin
 
+// package sysstats provides system statistics for the Apollo widget,
+// including CPU and memory usage, and top processes. This file contains Darwin-specific implementations.
+// build script and cross platform support lead to separate OS level info gathering.
+// This file is for Darwin, other OSes have their own implementations.
 package sysstats
 
 import (
@@ -13,7 +17,7 @@ import (
 // without needing cgo (and so avoids the go-m1cpu crash). `-l 2` takes two
 // samples; the second reflects activity over the sampling interval.
 func sampleCPUPercent() (float64, bool) {
-	out, err := exec.Command("top", "-l", "2", "-n", "0", "-s", "1").Output()
+	out, err := commandOutput(exec.Command("top", "-l", "2", "-n", "0", "-s", "1"))
 	if err != nil {
 		return 0, false
 	}
@@ -47,7 +51,7 @@ func sampleCPUPercent() (float64, bool) {
 // uptimeSeconds parses `sysctl -n kern.boottime`, e.g.
 // "{ sec = 1718200000, usec = 0 } Tue Jun 10 12:00:00 2025".
 func uptimeSeconds() int64 {
-	out, err := exec.Command("sysctl", "-n", "kern.boottime").Output()
+	out, err := commandOutput(exec.Command("sysctl", "-n", "kern.boottime"))
 	if err != nil {
 		return 0
 	}

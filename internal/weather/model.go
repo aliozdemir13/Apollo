@@ -27,6 +27,15 @@ type GeoResult struct {
 	Longitude float64 `json:"longitude"`
 }
 
+type DetectLocationResult struct {
+	City      string  `json:"city"`
+	Region    string  `json:"region"`
+	Country   string  `json:"country_name"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+	Error     bool    `json:"error"`
+}
+
 type CurrentWeatherDetails struct {
 	Temperature  float64 `json:"temperature_2m"`
 	Humidity     float64 `json:"relative_humidity_2m"`

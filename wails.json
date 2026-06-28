@@ -9,5 +9,12 @@
   "author": {
     "name": "aliozdemir13",
     "email": "aliozdemir.95@icloud.com"
+  },
+  "info": {
+    "companyName": "aliozdemir13",
+    "productName": "Apollo",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright © 2025 aliozdemir13",
+    "comments": "Apollo Widget — github.com/aliozdemir13/Apollo"
   }
 }

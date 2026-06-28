@@ -13,6 +13,7 @@ var readNotifs = readTeamsNotifications
 // (macOS only) and presents them as "unread chats" — no API keys required. It
 // groups by chat/sender, keeping the most recent message per conversation.
 // nameFilter, if set, limits results to matching names (the favorites list).
+// Workaround for unavailable azure details, does not work very stable!!!
 func (s *Service) GetUnreadLocal(ctx context.Context, nameFilter []string) (Result, error) {
 	notifs, err := readNotifs()
 	if err != nil {

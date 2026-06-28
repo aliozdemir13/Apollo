@@ -1,4 +1,4 @@
-# Apollo Widget [WIP]
+# Apollo Widget
 
 A desktop widget styled like a retro LCD gadget. It floats on top of your other
 windows and cycles through several **views** using its physical-looking buttons:
@@ -14,6 +14,8 @@ windows and cycles through several **views** using its physical-looking buttons:
 
 Built with **[Wails v2](https://wails.io)** — a Go backend compiled together with
 a Svelte frontend into a single native binary. Runs on **macOS** and **Ubuntu/Linux**.
+
+**Important**: This is a learning project for Svelte, OS-level processes and build scripts. Portions of the Svelte frontend, OS-level process parsing and build scripts were developed with **AI assistance**. **All code has been reviewed, tested and is understood by the maintainer. 
 
 ---
 
@@ -83,8 +85,9 @@ wails build
 
 Output:
 
-- **macOS** → `build/bin/retro-widget.app`
-- **Linux** → `build/bin/retro-widget` (a single binary)
+- **macOS** → `build/bin/Apollo-Widget.app`
+- **Linux** → `build/bin/Apollo-Widget` (a single binary)
+- **Windows** → `build/bin/Apollo-Widget.exe` (a single binary)
 
 > Cross-compiling between macOS and Linux is **not** supported because each links
 > against the native system webview (WebKit / WebKitGTK). Build **on** the target
@@ -146,19 +149,19 @@ wails build -tags webkit2_41
 wails build
 ```
 
-Output: a single binary at **`build/bin/retro-widget`**. Run it with `./build/bin/retro-widget`.
+Output: a single binary at **`build/bin/Apollo-Widget`**. Run it with `./build/bin/Apollo-Widget`.
 
 > `wails dev -tags webkit2_41` works the same way for live-reload development.
 
 ### 5. Run on login (optional)
 
-Create `~/.config/autostart/retro-widget.desktop` (adjust the path):
+Create `~/.config/autostart/Apollo-Widget.desktop` (adjust the path):
 
 ```ini
 [Desktop Entry]
 Type=Application
-Name=Retro Widget
-Exec=/home/YOU/retro-widget/build/bin/retro-widget
+Name=Apollo-Widget
+Exec=/home/YOU/Apollo-Widget/build/bin/Apollo-Widget
 X-GNOME-Autostart-enabled=true
 ```
 
@@ -176,10 +179,12 @@ X-GNOME-Autostart-enabled=true
 ### macOS, for completeness
 
 ```sh
-wails build      # → build/bin/retro-widget.app
+wails build      # → build/bin/Apollo-Widget.app
 ```
 
 Add it via System Settings → General → Login Items to run on login.
+
+## Building on Windows
 
 ---
 
@@ -188,14 +193,15 @@ Add it via System Settings → General → Login Items to run on login.
 Open **Settings** in the widget (press <kbd>S</kbd> or the ⚙ icon). Everything is
 stored in a single JSON file:
 
-- **macOS**: `~/Library/Application Support/retro-widget/config.json`
-- **Linux**: `~/.config/retro-widget/config.json`
+- **macOS**: `~/Library/Application Support/Apollo-Widget/config.json`
+- **Linux**: `~/.config/Apollo-Widget/config.json`
+- **Windows**: `%AppData%\Apollo-Widget\config.json`
 
 You can edit it by hand too; the path is shown at the bottom of the settings screen.
 
 ### Weather
 
-Leave **Location** blank to auto-detect by IP, or type a city (e.g. `Munich`).
+Leave **Location** blank to auto-detect by IP, or type a city (e.g. `Berlin`).
 Choose Celsius or Fahrenheit. Coordinates are resolved once and cached.
 
 ### GitHub PRs
@@ -222,12 +228,15 @@ The Teams view has two **sources** (Settings → Teams → *Source*):
 
 #### Local — macOS notifications (no keys)
 
+> [!IMPORTANT]
+> This feature only works on macOS!
+
 If you can't register an Azure app, choose **Local**. It reads delivered Teams
 notifications straight from the macOS Notification Center database — showing each
 recent message's sender + preview, with **no API keys or infrastructure**.
 
 - **Requires Full Disk Access**: System Settings → Privacy & Security → **Full Disk
-  Access** → enable **retro-widget** (during `wails dev`, grant it to your terminal
+  Access** → enable **Apollo-Widget** (during `wails dev`, grant it to your terminal
   instead). Until granted, the view shows "grant Full Disk Access".
 - Shows **delivered notifications** (what Teams notified you about and you haven't
   cleared) — a proxy for recent chatter, not a true unread count.
@@ -240,7 +249,7 @@ For a true unread view, register a (free) Azure AD app once. It's a **public
 client** — no secret is stored.
 
 1. Go to the [Azure Portal → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → **New registration**.
-2. Name it anything (e.g. `retro-widget`). Under **Supported account types**, pick
+2. Name it anything (e.g. `Apollo-Widget`). Under **Supported account types**, pick
    the option matching your org (usually *Accounts in this organizational directory only*).
 3. After creating it, open **Authentication** → **Add a platform** → **Mobile and
    desktop applications**, and enable **"Allow public client flows"**
@@ -252,7 +261,7 @@ client** — no secret is stored.
    - Tenant can also be `common` or `organizations` if you prefer.
 6. Switch to the **Teams** view in the widget and press **✓** to sign in. A code +
    URL appear on screen — open the URL, enter the code, and approve. The token is
-   cached at `…/retro-widget/teams_token.json` so you stay signed in.
+   cached at `…/Apollo-Widget/teams_token.json` so you stay signed in.
 
 **About "favorites":** Microsoft Graph does not expose the Teams *favorite* flag
 for chats, so the widget shows every chat with an **unread** message. To emulate a
